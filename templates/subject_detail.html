@@ -1,0 +1,552 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+    <title>{{ subject.name }} - Student Support AI</title>
+
+    <link rel="stylesheet"
+          href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+
+<body>
+
+<div class="app">
+
+    <!-- SIDEBAR -->
+    <aside class="sidebar">
+
+        <div class="logo">
+            <div class="logo-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4.26 10.147a60.436 60.436 0 00-.491 6.347A48.627 48.627 0 0112 20.904a48.627 48.627 0 018.232-4.41 60.46 60.46 0 00-.491-6.347m-15.482 0a50.57 50.57 0 00-2.658-.813A59.905 59.905 0 0112 3.493a59.902 59.902 0 0110.399 5.84c-.896.248-1.783.52-2.658.814m-15.482 0A50.697 50.697 0 0112 13.489a50.702 50.702 0 017.74-3.342M6.75 15a.75.75 0 100-1.5.75.75 0 000 1.5zm0 0v-3.675A55.378 55.378 0 0112 8.443m-7.007 11.55A5.981 5.981 0 006.75 15.75v-1.5"/></svg></div>
+
+            <div>
+                <h2>Student Support</h2>
+                <span>AI</span>
+            </div>
+        </div>
+
+        <nav class="nav-menu">
+
+            <a href="/dashboard" class="nav-link">
+                <span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2.25 12l8.954-8.955c.44-.439 1.152-.439 1.591 0L21.75 12M4.5 9.75v10.125c0 .621.504 1.125 1.125 1.125H9.75v-4.875c0-.621.504-1.125 1.125-1.125h2.25c.621 0 1.125.504 1.125 1.125V21h4.125c.621 0 1.125-.504 1.125-1.125V9.75"/></svg></span>
+                Dashboard
+            </a>
+
+            <a href="/chat" class="nav-link">
+                <span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8.625 12a.375.375 0 11-.75 0 .375.375 0 01.75 0zm0 0H8.25m4.125 0a.375.375 0 11-.75 0 .375.375 0 01.75 0zm0 0H12m4.125 0a.375.375 0 11-.75 0 .375.375 0 01.75 0zm0 0h-.375M21 12c0 4.556-4.03 8.25-9 8.25a9.764 9.764 0 01-2.555-.337A5.972 5.972 0 015.41 20.97a5.969 5.969 0 01-.474-.065 4.48 4.48 0 00.978-2.025c.09-.457-.133-.901-.467-1.226C3.93 16.178 3 14.189 3 12c0-4.556 4.03-8.25 9-8.25s9 3.694 9 8.25z"/></svg></span>
+                AI Assistant
+            </a>
+
+            <a href="/subjects" class="nav-link active">
+                <span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 6.042A8.967 8.967 0 006 3.75c-1.052 0-2.062.18-3 .512v14.25A8.987 8.987 0 016 18c2.305 0 4.408.867 6 2.292m0-14.25a8.966 8.966 0 016-2.292c1.052 0 2.062.18 3 .512v14.25A8.987 8.987 0 0018 18a8.967 8.967 0 00-6 2.292m0-14.25v14.25"/></svg></span>
+                My Subjects
+            </a>
+
+            <a href="/notes" class="nav-link">
+                <span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M16.862 4.487l1.687-1.688a1.875 1.875 0 112.652 2.652L10.582 16.07a4.5 4.5 0 01-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 011.13-1.897l8.932-8.931zm0 0L19.5 7.125M18 14v4.75A2.25 2.25 0 0115.75 21H5.25A2.25 2.25 0 013 18.75V8.25A2.25 2.25 0 015.25 6H10"/></svg></span>
+                My Notes
+            </a>
+
+            <a href="/questions" class="nav-link">
+                <span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9.879 7.519c1.171-1.025 3.071-1.025 4.242 0 1.172 1.025 1.172 2.687 0 3.712-.203.179-.43.326-.67.442-.745.361-1.45.999-1.45 1.827v.75M21 12a9 9 0 11-18 0 9 9 0 0118 0zm-9 5.25h.008v.008H12v-.008z"/></svg></span>
+                Important Questions
+            </a>
+
+            <a href="/resources" class="nav-link">
+                <span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M13.19 8.688a4.5 4.5 0 011.242 7.244l-4.5 4.5a4.5 4.5 0 01-6.364-6.364l2.757-2.757m4.5-4.5a4.5 4.5 0 016.364 6.364l-2.757 2.757m0 0L12 12"/></svg></span>
+                Resources
+            </a>
+
+        </nav>
+
+        <div class="sidebar-bottom">
+
+            <a href="/settings" class="nav-link">
+                <span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9.594 3.94c.09-.542.56-.94 1.11-.94h2.593c.55 0 1.02.398 1.11.94l.213 1.281c.063.374.313.686.645.87.074.04.147.083.22.127.324.196.72.257 1.075.124l1.217-.456a1.125 1.125 0 011.37.49l1.296 2.247a1.125 1.125 0 01-.26 1.431l-1.003.827c-.293.24-.438.613-.431.992a6.759 6.759 0 010 .255c-.007.378.138.75.43.99l1.005.828c.424.35.534.954.26 1.43l-1.298 2.247a1.125 1.125 0 01-1.369.491l-1.217-.456c-.355-.133-.75-.072-1.076.124a6.57 6.57 0 01-.22.128c-.331.183-.581.495-.644.869l-.213 1.28c-.09.543-.56.941-1.11.941h-2.594c-.55 0-1.02-.398-1.11-.94l-.213-1.281c-.062-.374-.312-.686-.644-.87a6.52 6.52 0 01-.22-.127c-.325-.196-.72-.257-1.076-.124l-1.217.456a1.125 1.125 0 01-1.369-.49l-1.297-2.247a1.125 1.125 0 01.26-1.431l1.004-.827c.292-.24.437-.613.43-.992a6.932 6.932 0 010-.255c.007-.378-.138-.75-.43-.99l-1.004-.828a1.125 1.125 0 01-.26-1.43l1.297-2.247a1.125 1.125 0 011.37-.491l1.216.456c.356.133.751.072 1.076-.124.072-.044.146-.087.22-.128.332-.183.582-.495.644-.869l.214-1.28zM15 12a3 3 0 11-6 0 3 3 0 016 0z"/></svg></span>
+                Settings
+            </a>
+
+            <a href="/logout" class="nav-link logout-link">
+                <span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15.75 9V5.25A2.25 2.25 0 0013.5 3h-6a2.25 2.25 0 00-2.25 2.25v13.5A2.25 2.25 0 007.5 21h6a2.25 2.25 0 002.25-2.25V15m3 0l3-3m0 0l-3-3m3 3H9"/></svg></span>
+                Logout
+            </a>
+
+        </div>
+
+    </aside>
+
+
+    <!-- MAIN -->
+    <main class="main subject-detail-page">
+
+        <!-- TOPBAR -->
+        <header class="topbar">
+
+            <div>
+                <p class="small-title">{{ subject.code }} • VTU CSE • {{ subject.semester }}th Semester</p>
+                <h1>{{ subject.name }}</h1>
+            </div>
+
+            <div class="profile">
+                <div class="profile-menu">
+                    <button type="button" class="avatar-btn" onclick="toggleProfileMenu(event)" aria-haspopup="true" aria-label="Account menu">
+                        <div class="avatar">{{ (user.name[0] if user else "S")|upper }}</div>
+                    </button>
+                    <div class="profile-dropdown">
+                        <div class="profile-dropdown-head">
+                            <strong>{{ user.name if user else "Student" }}</strong>
+                            <span>{{ user.email if user else "" }}</span>
+                        </div>
+                        <a href="/settings#contact">Update email &amp; mobile</a>
+                        <a href="/logout" class="danger">Sign out</a>
+                    </div>
+                </div>
+            </div>
+
+        </header>
+
+
+        <!-- BACK NAVIGATION -->
+        <div class="back-nav-row">
+            <a href="{{ url_for('subjects', semester=from_semester) }}" class="back-link">← Back to My Subjects</a>
+        </div>
+
+
+        <!-- SUBJECT HERO -->
+        <section class="subject-detail-hero">
+
+            <div class="detail-subject-icon">
+                {{ subject.icon }}
+            </div>
+
+            <div class="detail-subject-info">
+
+                <span class="detail-subject-code">
+                    {{ subject.code }}
+                </span>
+
+                <h2>
+                    {{ subject.name }}
+                </h2>
+
+                <p>
+                    Study units, notes and important questions
+                    for this subject.
+                </p>
+
+            </div>
+
+        </section>
+
+
+        <!-- STATS -->
+        <section class="detail-stats">
+
+            <div class="detail-stat-card">
+
+                <div class="detail-stat-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 6.042A8.967 8.967 0 006 3.75c-1.052 0-2.062.18-3 .512v14.25A8.987 8.987 0 016 18c2.305 0 4.408.867 6 2.292m0-14.25a8.966 8.966 0 016-2.292c1.052 0 2.062.18 3 .512v14.25A8.987 8.987 0 0018 18a8.967 8.967 0 00-6 2.292m0-14.25v14.25"/></svg></div>
+
+                <div>
+                    <strong>{{ subject.units }}</strong>
+                    <span>Units</span>
+                </div>
+
+            </div>
+
+
+            <div class="detail-stat-card">
+
+                <div class="detail-stat-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M16.862 4.487l1.687-1.688a1.875 1.875 0 112.652 2.652L10.582 16.07a4.5 4.5 0 01-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 011.13-1.897l8.932-8.931zm0 0L19.5 7.125M18 14v4.75A2.25 2.25 0 0115.75 21H5.25A2.25 2.25 0 013 18.75V8.25A2.25 2.25 0 015.25 6H10"/></svg></div>
+
+                <div>
+                    <strong>{{ subject.questions }}</strong>
+                    <span>Important Questions</span>
+                </div>
+
+            </div>
+
+
+            <div class="detail-stat-card">
+
+                <div class="detail-stat-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 6.042A8.967 8.967 0 006 3.75c-1.052 0-2.062.18-3 .512v14.25A8.987 8.987 0 016 18c2.305 0 4.408.867 6 2.292m0-14.25a8.966 8.966 0 016-2.292c1.052 0 2.062.18 3 .512v14.25A8.987 8.987 0 0018 18a8.967 8.967 0 00-6 2.292m0-14.25v14.25"/></svg></div>
+
+                <div>
+                    <strong>{{ subject.notes }}</strong>
+                    <span>Study Notes</span>
+                </div>
+
+            </div>
+
+
+            <div class="detail-stat-card">
+
+                <div class="detail-stat-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M11.48 3.499a.562.562 0 011.04 0l2.125 5.111a.563.563 0 00.475.345l5.518.442c.499.04.701.663.321.988l-4.204 3.602a.563.563 0 00-.182.557l1.285 5.385a.562.562 0 01-.84.61l-4.725-2.885a.563.563 0 00-.586 0L6.982 20.54a.562.562 0 01-.84-.61l1.285-5.386a.562.562 0 00-.182-.557l-4.204-3.602a.563.563 0 01.321-.988l5.518-.442a.563.563 0 00.475-.345L11.48 3.5z"/></svg></div>
+
+                <div>
+                    <strong>{{ subject.credits }}</strong>
+                    <span>Credits</span>
+                </div>
+
+            </div>
+
+        </section>
+
+
+        <!-- UNITS -->
+        <section class="subject-content-section">
+
+            <div class="detail-section-header">
+
+                <div>
+                    <h2>Course Units</h2>
+
+                    <p>
+                        Explore the topics covered in each unit.
+                    </p>
+                </div>
+
+            </div>
+
+
+            <div class="units-grid">
+
+                {% if unit_list %}
+
+                    {% for unit in unit_list %}
+
+                    <div class="unit-card">
+
+                        <div class="unit-number">
+                            {{ loop.index }}
+                        </div>
+
+                        <div class="unit-content">
+
+                            <h3>
+                                {{ unit.title }}
+                            </h3>
+
+                            <p>
+                                {{ unit.description }}
+                            </p>
+
+                            <div class="unit-bottom">
+
+                                <span>
+                                    📚 Unit {{ loop.index }}
+                                </span>
+
+                                <a
+                                    href="/questions"
+                                    class="unit-link"
+                                >
+                                    Practice Questions →
+                                </a>
+
+                            </div>
+
+                        </div>
+
+                    </div>
+
+                    {% endfor %}
+
+                {% else %}
+
+                    <p>
+                        Unit details will appear here once
+                        questions are added for this subject.
+                    </p>
+
+                {% endif %}
+
+            </div>
+
+        </section>
+
+
+        <!-- STUDY MATERIAL (KNOWLEDGE BASE PDFs) -->
+        <section class="subject-content-section">
+
+            <div class="detail-section-header">
+
+                <div>
+                    <h2>Study Material</h2>
+
+                    <p>
+                        Official module PDFs from the knowledge base.
+                    </p>
+                </div>
+
+            </div>
+
+
+            <div class="knowledge-modules">
+
+                {% if knowledge_modules %}
+
+                    {% for module in knowledge_modules %}
+
+                    <div class="knowledge-module-card">
+
+                        <div class="knowledge-module-head">
+
+                            {% if module.number %}
+                            <div class="unit-number">
+                                {{ module.number }}
+                            </div>
+                            {% endif %}
+
+                            <div class="knowledge-module-titles">
+
+                                {% if module.number %}
+                                <h3>
+                                    Module {{ module.number }}{% if module.title and module.title|lower != 'module ' ~ module.number %}: {{ module.title }}{% endif %}
+                                </h3>
+
+                                {% if module.topics %}
+                                <p class="knowledge-topics">
+                                    {{ module.topics }}
+                                </p>
+                                {% endif %}
+                                {% endif %}
+
+                            </div>
+
+                        </div>
+
+                        {% if module.documents %}
+
+                        <ul class="knowledge-doc-list">
+
+                            {% for doc in module.documents %}
+
+                            <li class="knowledge-doc">
+
+                                <div class="knowledge-doc-info">
+
+                                    <span class="knowledge-doc-icon" aria-hidden="true">📄</span>
+
+                                    <div>
+                                        <strong>{{ doc.filename }}</strong>
+                                        {% if doc.page_count %}
+                                        <small>{{ doc.page_count }} pages</small>
+                                        {% endif %}
+                                    </div>
+
+                                </div>
+
+                                <a
+                                    class="knowledge-view-btn"
+                                    href="{{ url_for('knowledge_pdf' if doc.filename[-4:].lower() == '.pdf' else 'knowledge_document', document_id=doc.id) }}"
+                                    target="_blank"
+                                    rel="noopener"
+                                >
+                                    {% if doc.filename[-4:].lower() == '.pdf' %}View PDF ↗{% else %}View File ↗{% endif %}
+                                </a>
+
+                            </li>
+
+                            {% endfor %}
+
+                        </ul>
+
+                        {% else %}
+
+                        <p class="knowledge-empty">
+                            No PDF uploaded yet.
+                        </p>
+
+                        {% endif %}
+
+                    </div>
+
+                    {% endfor %}
+
+                {% else %}
+
+                    <div class="knowledge-module-card knowledge-empty-card">
+                        <p class="knowledge-empty">
+                            No study material uploaded yet.
+                        </p>
+                    </div>
+
+                {% endif %}
+
+            </div>
+
+        </section>
+
+
+        {% if additional_resources %}
+
+        <!-- ADDITIONAL RESOURCES -->
+        <section class="subject-content-section">
+
+            <div class="detail-section-header">
+
+                <div>
+                    <h2>Additional Resources</h2>
+
+                    <p>
+                        Supplementary PDFs for this subject.
+                    </p>
+                </div>
+
+            </div>
+
+
+            <div class="knowledge-modules">
+
+                <div class="knowledge-module-card">
+
+                    <ul class="knowledge-doc-list">
+
+                        {% for doc in additional_resources %}
+
+                        <li class="knowledge-doc">
+
+                            <div class="knowledge-doc-info">
+
+                                <span class="knowledge-doc-icon" aria-hidden="true">📄</span>
+
+                                <div>
+                                    <strong>{{ doc.filename }}</strong>
+                                    {% if doc.page_count %}
+                                    <small>{{ doc.page_count }} pages</small>
+                                    {% endif %}
+                                </div>
+
+                            </div>
+
+                            <a
+                                class="knowledge-view-btn"
+                                href="{{ url_for('knowledge_pdf' if doc.filename[-4:].lower() == '.pdf' else 'knowledge_document', document_id=doc.id) }}"
+                                target="_blank"
+                                rel="noopener"
+                            >
+                                {% if doc.filename[-4:].lower() == '.pdf' %}View PDF ↗{% else %}View File ↗{% endif %}
+                            </a>
+
+                        </li>
+
+                        {% endfor %}
+
+                    </ul>
+
+                </div>
+
+            </div>
+
+        </section>
+
+        {% endif %}
+
+
+        <!-- QUICK ACTIONS -->
+        <section class="subject-content-section">
+
+            <div class="detail-section-header">
+
+                <div>
+                    <h2>Study Tools</h2>
+
+                    <p>
+                        Quickly access study material for this subject.
+                    </p>
+                </div>
+
+            </div>
+
+
+            <div class="subject-tools-grid">
+
+                <a href="/questions"
+                   class="subject-tool-card">
+
+                    <div class="subject-tool-icon">
+                        ❓
+                    </div>
+
+                    <div>
+                        <h3>Important Questions</h3>
+                        <p>
+                            Practice exam-oriented questions.
+                        </p>
+                    </div>
+
+                    <span>→</span>
+
+                </a>
+
+
+                <a href="/notes"
+                   class="subject-tool-card">
+
+                    <div class="subject-tool-icon">
+                        📝
+                    </div>
+
+                    <div>
+                        <h3>My Notes</h3>
+                        <p>
+                            Review and create your study notes.
+                        </p>
+                    </div>
+
+                    <span>→</span>
+
+                </a>
+
+
+                <a href="/chat"
+                   class="subject-tool-card">
+
+                    <div class="subject-tool-icon">
+                        🤖
+                    </div>
+
+                    <div>
+                        <h3>Ask AI</h3>
+                        <p>
+                            Ask questions about this subject.
+                        </p>
+                    </div>
+
+                    <span>→</span>
+
+                </a>
+
+
+                <a href="/resources"
+                   class="subject-tool-card">
+
+                    <div class="subject-tool-icon">
+                        🔗
+                    </div>
+
+                    <div>
+                        <h3>Resources</h3>
+                        <p>
+                            Find additional learning material.
+                        </p>
+                    </div>
+
+                    <span>→</span>
+
+                </a>
+
+            </div>
+
+        </section>
+
+    </main>
+
+</div>
+
+
+<script src="{{ url_for('static', filename='js/main.js') }}"></script>
+
+</body>
+</html>

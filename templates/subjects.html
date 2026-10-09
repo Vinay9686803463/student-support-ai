@@ -1,0 +1,428 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta
+        name="viewport"
+        content="width=device-width, initial-scale=1.0"
+    >
+
+    <title>My Subjects - Student Support AI</title>
+
+    <link
+        rel="stylesheet"
+        href="{{ url_for('static', filename='css/style.css') }}"
+    >
+</head>
+
+<body>
+
+<div class="app">
+
+    <!-- SIDEBAR -->
+    <aside class="sidebar">
+
+        <div class="logo">
+            <div class="logo-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4.26 10.147a60.436 60.436 0 00-.491 6.347A48.627 48.627 0 0112 20.904a48.627 48.627 0 018.232-4.41 60.46 60.46 0 00-.491-6.347m-15.482 0a50.57 50.57 0 00-2.658-.813A59.905 59.905 0 0112 3.493a59.902 59.902 0 0110.399 5.84c-.896.248-1.783.52-2.658.814m-15.482 0A50.697 50.697 0 0112 13.489a50.702 50.702 0 017.74-3.342M6.75 15a.75.75 0 100-1.5.75.75 0 000 1.5zm0 0v-3.675A55.378 55.378 0 0112 8.443m-7.007 11.55A5.981 5.981 0 006.75 15.75v-1.5"/></svg></div>
+
+            <div>
+                <h2>Student Support</h2>
+                <span>AI</span>
+            </div>
+        </div>
+
+        <nav>
+
+            <a href="{{ url_for('dashboard') }}" class="nav-link">
+                <span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2.25 12l8.954-8.955c.44-.439 1.152-.439 1.591 0L21.75 12M4.5 9.75v10.125c0 .621.504 1.125 1.125 1.125H9.75v-4.875c0-.621.504-1.125 1.125-1.125h2.25c.621 0 1.125.504 1.125 1.125V21h4.125c.621 0 1.125-.504 1.125-1.125V9.75"/></svg></span>
+                Dashboard
+            </a>
+
+            <a href="{{ url_for('chat') }}" class="nav-link">
+                <span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8.625 12a.375.375 0 11-.75 0 .375.375 0 01.75 0zm0 0H8.25m4.125 0a.375.375 0 11-.75 0 .375.375 0 01.75 0zm0 0H12m4.125 0a.375.375 0 11-.75 0 .375.375 0 01.75 0zm0 0h-.375M21 12c0 4.556-4.03 8.25-9 8.25a9.764 9.764 0 01-2.555-.337A5.972 5.972 0 015.41 20.97a5.969 5.969 0 01-.474-.065 4.48 4.48 0 00.978-2.025c.09-.457-.133-.901-.467-1.226C3.93 16.178 3 14.189 3 12c0-4.556 4.03-8.25 9-8.25s9 3.694 9 8.25z"/></svg></span>
+                AI Assistant
+            </a>
+
+            <a href="{{ url_for('subjects') }}" class="nav-link active">
+                <span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 6.042A8.967 8.967 0 006 3.75c-1.052 0-2.062.18-3 .512v14.25A8.987 8.987 0 016 18c2.305 0 4.408.867 6 2.292m0-14.25a8.966 8.966 0 016-2.292c1.052 0 2.062.18 3 .512v14.25A8.987 8.987 0 0018 18a8.967 8.967 0 00-6 2.292m0-14.25v14.25"/></svg></span>
+                My Subjects
+            </a>
+
+            <a href="{{ url_for('notes') }}" class="nav-link">
+                <span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M16.862 4.487l1.687-1.688a1.875 1.875 0 112.652 2.652L10.582 16.07a4.5 4.5 0 01-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 011.13-1.897l8.932-8.931zm0 0L19.5 7.125M18 14v4.75A2.25 2.25 0 0115.75 21H5.25A2.25 2.25 0 013 18.75V8.25A2.25 2.25 0 015.25 6H10"/></svg></span>
+                My Notes
+            </a>
+
+            <a href="{{ url_for('questions') }}" class="nav-link">
+                <span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9.879 7.519c1.171-1.025 3.071-1.025 4.242 0 1.172 1.025 1.172 2.687 0 3.712-.203.179-.43.326-.67.442-.745.361-1.45.999-1.45 1.827v.75M21 12a9 9 0 11-18 0 9 9 0 0118 0zm-9 5.25h.008v.008H12v-.008z"/></svg></span>
+                Important Questions
+            </a>
+
+            <a href="{{ url_for('resources') }}" class="nav-link">
+                <span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M13.19 8.688a4.5 4.5 0 011.242 7.244l-4.5 4.5a4.5 4.5 0 01-6.364-6.364l2.757-2.757m4.5-4.5a4.5 4.5 0 016.364 6.364l-2.757 2.757m0 0L12 12"/></svg></span>
+                Resources
+            </a>
+
+        </nav>
+
+        <div class="sidebar-bottom">
+
+            <a href="{{ url_for('settings') }}" class="nav-link">
+                <span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9.594 3.94c.09-.542.56-.94 1.11-.94h2.593c.55 0 1.02.398 1.11.94l.213 1.281c.063.374.313.686.645.87.074.04.147.083.22.127.324.196.72.257 1.075.124l1.217-.456a1.125 1.125 0 011.37.49l1.296 2.247a1.125 1.125 0 01-.26 1.431l-1.003.827c-.293.24-.438.613-.431.992a6.759 6.759 0 010 .255c-.007.378.138.75.43.99l1.005.828c.424.35.534.954.26 1.43l-1.298 2.247a1.125 1.125 0 01-1.369.491l-1.217-.456c-.355-.133-.75-.072-1.076.124a6.57 6.57 0 01-.22.128c-.331.183-.581.495-.644.869l-.213 1.28c-.09.543-.56.941-1.11.941h-2.594c-.55 0-1.02-.398-1.11-.94l-.213-1.281c-.062-.374-.312-.686-.644-.87a6.52 6.52 0 01-.22-.127c-.325-.196-.72-.257-1.076-.124l-1.217.456a1.125 1.125 0 01-1.369-.49l-1.297-2.247a1.125 1.125 0 01.26-1.431l1.004-.827c.292-.24.437-.613.43-.992a6.932 6.932 0 010-.255c.007-.378-.138-.75-.43-.99l-1.004-.828a1.125 1.125 0 01-.26-1.43l1.297-2.247a1.125 1.125 0 011.37-.491l1.216.456c.356.133.751.072 1.076-.124.072-.044.146-.087.22-.128.332-.183.582-.495.644-.869l.214-1.28zM15 12a3 3 0 11-6 0 3 3 0 016 0z"/></svg></span>
+                Settings
+            </a>
+
+            <a href="{{ url_for('logout') }}" class="nav-link">
+                <span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15.75 9V5.25A2.25 2.25 0 0013.5 3h-6a2.25 2.25 0 00-2.25 2.25v13.5A2.25 2.25 0 007.5 21h6a2.25 2.25 0 002.25-2.25V15m3 0l3-3m0 0l-3-3m3 3H9"/></svg></span>
+                Logout
+            </a>
+
+            <div class="user-mini">
+                <div class="avatar">{{ user["name"][0]|upper }}</div>
+
+                <div>
+                    <strong>{{ user["name"] }}</strong>
+                    <small>{{ user["branch"] }} • Sem {{ user["current_semester"] }}</small>
+                </div>
+            </div>
+
+        </div>
+
+    </aside>
+
+
+    <!-- MAIN -->
+    <main class="main subjects-page">
+
+        <header class="topbar">
+
+            <div>
+                <p class="small-title">STUDENT SUPPORT AI</p>
+                <h1>My Subjects</h1>
+            </div>
+
+            <div class="profile-menu">
+                <button type="button" class="avatar-btn" onclick="toggleProfileMenu(event)" aria-haspopup="true" aria-label="Account menu">
+                    <div class="avatar">{{ user["name"][0]|upper }}</div>
+                </button>
+                <div class="profile-dropdown" id="profileDropdown">
+                    <div class="profile-dropdown-head">
+                        <strong>{{ user["name"] }}</strong>
+                        <span>{{ user["email"] }}</span>
+                    </div>
+                    <a href="{{ url_for('settings') }}#contact">Update email &amp; mobile</a>
+                    <a href="{{ url_for('logout') }}" class="danger">Sign out</a>
+                </div>
+            </div>
+
+        </header>
+
+
+        <div class="back-nav-row">
+            <a href="{{ url_for('dashboard') }}" class="back-link">← Back to Dashboard</a>
+        </div>
+
+
+        <nav class="semester-nav" aria-label="Semester selection">
+            <a href="{{ url_for('subjects', semester=1) }}" class="semester-box{% if semester == 1 %} active{% endif %}">1st Semester</a>
+            <a href="{{ url_for('subjects', semester=2) }}" class="semester-box{% if semester == 2 %} active{% endif %}">2nd Semester</a>
+            <a href="{{ url_for('subjects', semester=3) }}" class="semester-box{% if semester == 3 %} active{% endif %}">3rd Semester</a>
+            <a href="{{ url_for('subjects', semester=4) }}" class="semester-box{% if semester == 4 %} active{% endif %}">4th Semester</a>
+            <a href="{{ url_for('subjects', semester=5) }}" class="semester-box{% if semester == 5 %} active{% endif %}">5th Semester</a>
+        </nav>
+
+
+        <div class="subjects-header">
+
+            <span class="badge">Semester {{ semester }} • VTU {{ user["branch"] }} • {{ user["scheme"] }} Scheme</span>
+
+            <h2>{% if semester == user["current_semester"] %}Your semester subjects{% else %}Semester {{ semester }} subjects{% endif %}</h2>
+
+            <p>
+                {{ total_subjects }} subjects available.
+                Open any subject for units, important questions and resources.
+            </p>
+
+        </div>
+
+
+        <div class="subject-stats">
+
+            <div class="subject-stat-card">
+                <div class="subject-stat-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 6.042A8.967 8.967 0 006 3.75c-1.052 0-2.062.18-3 .512v14.25A8.987 8.987 0 016 18c2.305 0 4.408.867 6 2.292m0-14.25a8.966 8.966 0 016-2.292c1.052 0 2.062.18 3 .512v14.25A8.987 8.987 0 0018 18a8.967 8.967 0 00-6 2.292m0-14.25v14.25"/></svg></div>
+                <div>
+                    <span>Total Subjects</span>
+                    <strong>{{ total_subjects }}</strong>
+                </div>
+            </div>
+
+            <div class="subject-stat-card">
+                <div class="subject-stat-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4.26 10.147a60.436 60.436 0 00-.491 6.347A48.627 48.627 0 0112 20.904a48.627 48.627 0 018.232-4.41 60.46 60.46 0 00-.491-6.347m-15.482 0a50.57 50.57 0 00-2.658-.813A59.905 59.905 0 0112 3.493a59.902 59.902 0 0110.399 5.84c-.896.248-1.783.52-2.658.814m-15.482 0A50.697 50.697 0 0112 13.489a50.702 50.702 0 017.74-3.342M6.75 15a.75.75 0 100-1.5.75.75 0 000 1.5zm0 0v-3.675A55.378 55.378 0 0112 8.443m-7.007 11.55A5.981 5.981 0 006.75 15.75v-1.5"/></svg></div>
+                <div>
+                    <span>Scheme</span>
+                    <strong>{{ user["scheme"] }}</strong>
+                </div>
+            </div>
+
+            <div class="subject-stat-card">
+                <div class="subject-stat-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9.879 7.519c1.171-1.025 3.071-1.025 4.242 0 1.172 1.025 1.172 2.687 0 3.712-.203.179-.43.326-.67.442-.745.361-1.45.999-1.45 1.827v.75M21 12a9 9 0 11-18 0 9 9 0 0118 0zm-9 5.25h.008v.008H12v-.008z"/></svg></div>
+                <div>
+                    <span>Semester</span>
+                    <strong>{{ user["current_semester"] }}</strong>
+                </div>
+            </div>
+
+        </div>
+
+
+        <section class="section">
+
+            {% if subjects or alternatives or electives or professional_electives %}
+
+                {% if subjects %}
+                <div class="subjects-grid">
+
+                    {% for subject in subjects %}
+
+                        <div class="subject-card">
+
+                            <div class="subject-card-top">
+
+                                <div class="subject-icon">
+                                    {{ subject.icon or "📚" }}
+                                </div>
+
+                                <span class="subject-code">
+                                    {{ subject.code }}
+                                </span>
+
+                            </div>
+
+                            <h3>
+                                {{ subject.name }}
+                            </h3>
+
+                            <p>
+                                {{ subject.description or "Study materials, important questions and resources." }}
+                            </p>
+
+                            <div class="subject-info">
+                                <span>📚 {{ subject.credits or 4 }} Credits</span>
+                                <span>🎓 Sem {{ subject.semester }}</span>
+                            </div>
+
+                            <a
+                                href="{{ url_for('subject_detail', subject_code=subject.code, semester=semester) }}"
+                                class="subject-button"
+                            >
+                                View Subject →
+                            </a>
+
+                        </div>
+
+                    {% endfor %}
+
+                </div>
+                {% endif %}
+
+
+                {% if alternatives %}
+
+                <div class="section-heading" style="margin-top: 2.5rem;">
+                    <div>
+                        <h2>Selectable Alternatives</h2>
+                        <p>Stream / choice-dependent subjects — pick the one that applies to you.</p>
+                    </div>
+                </div>
+
+                <div class="subjects-grid">
+
+                    {% for subject in alternatives %}
+
+                        <div class="subject-card">
+
+                            <div class="subject-card-top">
+
+                                <div class="subject-icon">
+                                    {{ subject.icon or "📚" }}
+                                </div>
+
+                                <span class="subject-code">
+                                    {{ subject.code }}
+                                </span>
+
+                            </div>
+
+                            <h3>
+                                {{ subject.name }}
+                            </h3>
+
+                            <p>
+                                {{ subject.description or "Stream-dependent subject. Applies based on your cycle or course choice." }}
+                            </p>
+
+                            <div class="subject-info">
+                                <span>📚 {{ subject.credits or 4 }} Credits</span>
+                                <span>🎓 Sem {{ subject.semester }}</span>
+                            </div>
+
+                            <a
+                                href="{{ url_for('subject_detail', subject_code=subject.code, semester=semester) }}"
+                                class="subject-button"
+                            >
+                                View Subject →
+                            </a>
+
+                        </div>
+
+                    {% endfor %}
+
+                </div>
+
+                {% endif %}
+
+
+                {% if electives %}
+
+                <div class="section-heading" style="margin-top: 2.5rem;">
+                    <div>
+                        <h2>Elective Options</h2>
+                        <p>Choose one elective from the available options.</p>
+                    </div>
+                </div>
+
+                <div class="subjects-grid">
+
+                    {% for subject in electives %}
+
+                        <div class="subject-card">
+
+                            <div class="subject-card-top">
+
+                                <div class="subject-icon">
+                                    {{ subject.icon or "📚" }}
+                                </div>
+
+                                <span class="subject-code">
+                                    {{ subject.code }}
+                                </span>
+
+                            </div>
+
+                            <h3>
+                                {{ subject.name }}
+                            </h3>
+
+                            <p>
+                                {{ subject.description or "Elective subject. Choose one option from this group." }}
+                            </p>
+
+                            <div class="subject-info">
+                                <span>📚 {{ subject.credits or 4 }} Credits</span>
+                                <span>🎓 Sem {{ subject.semester }}</span>
+                            </div>
+
+                            <a
+                                href="{{ url_for('subject_detail', subject_code=subject.code, semester=semester) }}"
+                                class="subject-button"
+                            >
+                                View Subject →
+                            </a>
+
+                        </div>
+
+                    {% endfor %}
+
+                </div>
+
+                {% endif %}
+
+
+                {% if professional_electives %}
+
+                <div class="section-heading" style="margin-top: 2.5rem;">
+                    <div>
+                        <h2>Professional Elective</h2>
+                        <p>Choose one professional elective from the available options.</p>
+                    </div>
+                </div>
+
+                <div class="subjects-grid">
+
+                    {% for subject in professional_electives %}
+
+                        <div class="subject-card">
+
+                            <div class="subject-card-top">
+
+                                <div class="subject-icon">
+                                    {{ subject.icon or "📚" }}
+                                </div>
+
+                                <span class="subject-code">
+                                    {{ subject.code }}
+                                </span>
+
+                            </div>
+
+                            <h3>
+                                {{ subject.name }}
+                            </h3>
+
+                            <p>
+                                {{ subject.description or "Professional elective subject. Choose one option from this group." }}
+                            </p>
+
+                            <div class="subject-info">
+                                <span>📚 {{ subject.credits or 4 }} Credits</span>
+                                <span>🎓 Sem {{ subject.semester }}</span>
+                            </div>
+
+                            <a
+                                href="{{ url_for('subject_detail', subject_code=subject.code, semester=semester) }}"
+                                class="subject-button"
+                            >
+                                View Subject →
+                            </a>
+
+                        </div>
+
+                    {% endfor %}
+
+                </div>
+
+                {% endif %}
+
+
+            {% else %}
+
+                <div class="empty-state">
+
+                    <div class="empty-icon">
+                        📚
+                    </div>
+
+                    <h3>
+                        No subjects added yet.
+                    </h3>
+
+                    <p>
+                        {% if semester == user["current_semester"] %}Subjects for your branch, scheme and semester
+                        have not been added yet.{% else %}Subject information will be added from the
+                        official semester syllabus.{% endif %}
+                    </p>
+
+                </div>
+
+            {% endif %}
+
+        </section>
+
+    </main>
+
+</div>
+
+<script src="{{ url_for('static', filename='js/main.js') }}"></script>
+
+</body>
+</html>

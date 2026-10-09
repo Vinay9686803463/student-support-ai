@@ -1,0 +1,34 @@
+/* Source citations style */
+
+.source-citations {
+    margin-top: 0.5rem;
+    margin-bottom: 1rem;
+    padding-top: 0.5rem;
+    border-top: 1px solid var(--border-color, #dee2e6);
+    font-size: 0.85rem;
+    color: #6c757d;
+}
+
+.source-citations strong {
+    display: block;
+    margin-bottom: 0.25rem;
+    color: #495057;
+}
+
+.source-citations span {
+    display: block;
+    margin-bottom: 0.15rem;
+}
+
+.source-citations span:last-child {
+    margin-bottom: 0;
+}
+
+/* Keep existing overrides minimal */
+
+/* Ensure citations don't interfere with message layout */
+
+.chat-messages .message:last-child .source-citations {
+    margin-top: 0.75rem;
+    border-top-color: #e0e0e0;
+}
