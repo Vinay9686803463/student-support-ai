@@ -53,10 +53,12 @@ DEFAULT_RESOURCES = [
 # name/semester/branch/scheme/category so the subjects always list.
 # ONLY these codes are ever touched; credits, icon and description
 # are always left alone, and no other subject row is written.
-# (code, name, semester, branch, scheme, category)
+# (code, name, semester, branch, scheme, category, credits)
 CANONICAL_SUBJECTS = [
-    ("BKSKK107", "Samskrutika Kannada", 1, "CSE", "2022", "Core"),
-    ("BSFHK158", "Scientific Foundations of Health", 1, "CSE", "2022", "Core"),
+    ("BKSKK107", "Samskrutika Kannada", 1, "CSE", "2022", "Core", 1),
+    ("BSFHK158", "Scientific Foundations of Health", 1, "CSE", "2022", "Core", 1),
+    ("BESCK204D", "Introduction to Mechanical Engineering", 2, "CSE", "2022", "Core", 4),
+    ("BICOK207", "Indian Constitution", 2, "CSE", "2022", "Core", 1),
 ]
 
 # Study-material PDFs committed under knowledge_base/<CODE>/.
@@ -93,6 +95,87 @@ STUDY_MATERIALS = {
         ("21SFH29set2.pdf", 13),
         ("21SFH29set1.pdf", 14),
     ],
+    "BESCK204D": [
+        ("Module 1.pdf", 1),
+        ("Module 2.pdf", 2),
+        ("Module 3.pdf", 3),
+        ("Module 4.pdf", 4),
+        ("Module 5.pdf", 5),
+        ("IME QP 1.pdf", 0),
+        ("IME SEE QP.pdf", 0),
+        ("Module 5 question Answers.pdf", 0),
+        ("Module 5 short Notes.pdf", 0),
+        ("Module 4 question Answers.pdf", 0),
+        ("Module 3 (2).pdf", 0),
+        ("pdf&rendition=1.pdf", 0),
+        ("Module 1 (2).pdf", 0),
+        ("Module 1 question Answers.pdf", 0),
+        ("Module 2 (2).pdf", 0),
+        ("Module 2 question Answers.pdf", 0),
+    ],
+    "BICOK207": [
+        ("Notes 1.pdf", 1),
+        ("Notes 2.pdf", 2),
+        ("MODULE 3 MCQs.pdf", 3),
+        ("Module_4_-_Parliament.pdf", 4),
+        ("Module_5_-_State_Executive_and_Governor.pdf", 5),
+        ("Module_3_-_Directive_Principles_of_State_Policy_(DPSPs).pdf", 0),
+        ("Module 1 & 2 MCQs-IC.pdf", 0),
+        ("INDIAN CONSTITUTION  NOTES Module 1 to 5.pdf", 0),
+        ("IC Module 3 and 4 Notes.pdf", 0),
+        ("IC Mod 5 MCQ @vtudeveloper.in.pdf", 0),
+        ("IC Mod 4 MCQ @vtudeveloper.in.pdf", 0),
+        ("IC Mod 3 MCQ @vtudeveloper.in.pdf", 0),
+        ("IC Mod 2 MCQ @vtudeveloper.in.pdf", 0),
+        ("IC Mod 1 MCQ @vtudeveloper.in.pdf", 0),
+        ("IC Assignment I.pdf", 0),
+        ("IC Assignment 2 Module 3 & 4.pdf", 0),
+    ],
+}
+
+# Per-code storage subdirectories and module titles for STUDY_MATERIALS
+# entries that do not live flat under knowledge_base/<CODE>/. Follows
+# the established precedents: module-wise PDFs under moduleN/ titled
+# "Module N" (BCS502), extra files under additional/ titled
+# "Additional Resources" (BCHES102). Codes absent here keep the
+# unnumbered-file convention (flat layout, NULL module_title).
+# {code: {module_number: subdir}}
+STUDY_MATERIAL_SUBDIRS = {
+    "BESCK204D": {
+        1: "module1",
+        2: "module2",
+        3: "module3",
+        4: "module4",
+        5: "module5",
+        0: "additional",
+    },
+    "BICOK207": {
+        1: "module1",
+        2: "module2",
+        3: "module3",
+        4: "module4",
+        5: "module5",
+        0: "additional",
+    },
+}
+# {code: {module_number: module_title}}
+STUDY_MATERIAL_TITLES = {
+    "BESCK204D": {
+        1: "Module 1",
+        2: "Module 2",
+        3: "Module 3",
+        4: "Module 4",
+        5: "Module 5",
+        0: "Additional Resources",
+    },
+    "BICOK207": {
+        1: "Module 1",
+        2: "Module 2",
+        3: "Module 3",
+        4: "Module 4",
+        5: "Module 5",
+        0: "Additional Resources",
+    },
 }
 
 
@@ -100,13 +183,13 @@ def ensure_canonical_subjects():
     """Re-create missing file-backed subject rows; repair wrong attrs.
 
     Only CANONICAL_SUBJECTS codes are touched. Missing rows are
-    INSERTed (semester 1, CSE/2022, Core, 1 credit — matching the live
+    INSERTed with their canonical attributes (matching the live
     canonical rows). Existing rows keep their id/credits/icon/
     description; only a wrong name/semester/branch/scheme/category is
     repaired so the subject lists again. Never deletes. Never raises:
     any failure rolls back that code and logs, so boot continues.
     """
-    for code, name, semester, branch, scheme, category in CANONICAL_SUBJECTS:
+    for code, name, semester, branch, scheme, category, credits in CANONICAL_SUBJECTS:
         try:
             row = db.session.execute(
                 text("""
@@ -123,10 +206,10 @@ def ensure_canonical_subjects():
                         INSERT INTO subjects
                             (subject_code, subject_name, semester, branch,
                              scheme, credits, icon, category)
-                        VALUES (:c, :n, :s, :b, :sc, 1, '📚', :cat)
+                        VALUES (:c, :n, :s, :b, :sc, :cr, '📚', :cat)
                     """),
                     {"c": code, "n": name, "s": semester, "b": branch,
-                     "sc": scheme, "cat": category},
+                     "sc": scheme, "cr": credits, "cat": category},
                 )
                 db.session.commit()
                 print(f"  + subject restored: {code} ({name})")
@@ -172,11 +255,13 @@ def ensure_study_materials():
     except ImportError as error:
         print(f"  ! study materials skipped (pypdf unavailable): {error}")
         return
-    names = {c: n for c, n, _s, _b, _sc, _cat in CANONICAL_SUBJECTS}
+    names = {c: n for c, n, _s, _b, _sc, _cat, _cr in CANONICAL_SUBJECTS}
+    subdirs = STUDY_MATERIAL_SUBDIRS
+    titles = STUDY_MATERIAL_TITLES
     for code, files in STUDY_MATERIALS.items():
         try:
             existing = {
-                r[0] for r in db.session.execute(
+                row[0] for row in db.session.execute(
                     text("""
                         SELECT original_filename
                         FROM knowledge_documents
@@ -192,7 +277,12 @@ def ensure_study_materials():
         for filename, module_number in files:
             if filename in existing:
                 continue
-            pdf_path = PROJECT_ROOT / "knowledge_base" / code / filename
+            subdir = subdirs.get(code, {}).get(module_number, "")
+            module_title = titles.get(code, {}).get(module_number)
+            if subdir:
+                pdf_path = PROJECT_ROOT / "knowledge_base" / code / subdir / filename
+            else:
+                pdf_path = PROJECT_ROOT / "knowledge_base" / code / filename
             if not pdf_path.is_file():
                 print(f"  ! file missing, skipping: {code}/{filename}")
                 continue
@@ -211,13 +301,14 @@ def ensure_study_materials():
                             (subject_code, subject_name, module_number,
                              module_title, title, original_filename,
                              file_path, page_count, status)
-                        VALUES (:c, :n, :m, NULL, :t, :f, :p, :pages,
+                        VALUES (:c, :n, :m, :mt, :t, :f, :p, :pages,
                                 'uploaded')
                     """),
                     {
                         "c": code,
                         "n": names[code],
                         "m": module_number,
+                        "mt": module_title,
                         "t": Path(filename).stem,
                         "f": filename,
                         "p": pdf_path.relative_to(PROJECT_ROOT).as_posix(),

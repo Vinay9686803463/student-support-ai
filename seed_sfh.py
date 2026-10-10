@@ -29,7 +29,7 @@ from utils.bootstrap import (
 from utils.database import db
 
 SUBJECT_CODE = "BSFHK158"
-SUBJECT_NAME = dict((c, n) for c, n, _s, _b, _sc, _cat in CANONICAL_SUBJECTS)[SUBJECT_CODE]
+SUBJECT_NAME = dict((c, n) for c, n, _s, _b, _sc, _cat, _cr in CANONICAL_SUBJECTS)[SUBJECT_CODE]
 FILES = [f for f, _m in STUDY_MATERIALS[SUBJECT_CODE]]
 SOURCE_DIR = Path(__file__).resolve().parent / "knowledge_base" / SUBJECT_CODE
 
