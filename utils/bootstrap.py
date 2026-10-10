@@ -59,6 +59,12 @@ CANONICAL_SUBJECTS = [
     ("BSFHK158", "Scientific Foundations of Health", 1, "CSE", "2022", "Core", 1),
     ("BESCK204D", "Introduction to Mechanical Engineering", 2, "CSE", "2022", "Core", 4),
     ("BICOK207", "Indian Constitution", 2, "CSE", "2022", "Core", 1),
+    ("BMATS201", "Mathematics for CSE Stream-II", 2, "CSE", "2022", "Core", 4),
+    # NOTE: "Baasics" is the VTU-official spelling used by the live row
+    # and seed_subject_modules.py — do not "correct" it here, or the two
+    # scripts will flip-flop the name on every run.
+    ("BPLCK205C", "Baasics of Java Programming", 2, "CSE", "2022", "Core", 4),
+    ("BIDTK258", "Innovation and Design Thinking", 2, "CSE", "2022", "Core", 1),
 ]
 
 # Study-material PDFs committed under knowledge_base/<CODE>/.
@@ -131,6 +137,64 @@ STUDY_MATERIALS = {
         ("IC Assignment I.pdf", 0),
         ("IC Assignment 2 Module 3 & 4.pdf", 0),
     ],
+    # NOTE: 'July-2024 math.pdf' from Downloads is deliberately excluded:
+    # its bytes are an HTML page (Google Analytics script), not a PDF -
+    # same failure mode as the Chemistry 'Aug-2022.pdf' precedent in
+    # ingest_additional_resources.py. Register it only when a genuine
+    # July-2024 PDF is provided.
+    "BMATS201": [
+        ("BMATS201 Mod3@AzDOCUMENTS.in (1).pdf", 1),
+        # Real on-disk name has a trailing space before ".pdf".
+        ("BMATS201 MQP 1 & 2 .pdf", 2),
+        ("Jan 2024 math.pdf", 3),
+        ("July 2023 math.pdf", 4),
+        ("Lab Manual Engineering Maths 2 VTU.pdf", 5),
+        ("PDFGallery_20250528_111409.pdf", 6),
+        ("Sealed-E-version-Mathematics-Handbook-for-I-II-Semester-22-Scheme.pdf", 7),
+    ],
+    # Java files requested but NOT listed (all verified absent from
+    # Downloads, including subfolders): '22PLC13cset1.pdf',
+    # 'JAVA MODULE 4 ANSWERS.pdf', 'JAVA MODULE 1 ANSWERS SACHIN.pdf'.
+    # Similar-but-different files exist ('22PLC15cset1.pdf',
+    # 'JAVA MODULE 4 ANSWERS..pdf', 'JAVA_MODULE_1 ANSWERS SACHIN.pdf')
+    # and were deliberately NOT substituted - exact filenames only.
+    "BPLCK205C": [
+        ("Module 1 - JAVA.pdf", 1),
+        ("MODULE 2 - JAVA.pdf", 2),
+        ("Module 3 - JAVA.pdf", 3),
+        ("MODULE 4 - JAVA.pdf", 4),
+        ("BPLCK105C-BPLCK205C_module-5-textbook.pdf", 5),
+        ("BPLCK105C-BPLCK205C_model-set-1-paper.pdf", 0),
+        ("BPLCK205C-JAVA LAB MANUAL.pdf", 0),
+        ("JAVA ALL MODULE QUE.pdf", 0),
+        ("JAVA ANSWERS VTU 1.pdf", 0),
+        ("Java Assignment 1.pdf", 0),
+        ("Java assignment 2.pdf", 0),
+        ("Java Assignment 3.pdf", 0),
+        ("Java assignment.pdf", 0),
+        ("JAVA MODEL QUESTION PAPER'S .pdf", 0),
+        ("JAVA MODULE 1 QUESTIONS.docx", 0),
+        ("JAVA MODULE 2 ANSWERS SACHIN.pdf", 0),
+        ("JAVA MODULE 3 ANSWER..pdf", 0),
+        ("Java previous year question papers.pdf", 0),
+        ("JAVA QB2.pdf", 0),
+        ("JAVA QB3.docx", 0),
+        ("Java.pdf", 0),
+        ("Module3.pdf", 0),
+        ("module4.pdf", 0),
+        ("PDF Gallery_20250424_191432.pdf", 0),
+    ],
+    # NOTE: the requested 'IDT Previous year question papers.pdf' does
+    # not exist in Downloads; the real file is spelled 'IDT Privious
+    # year question papers.pdf' ("Privious" typo) and is registered
+    # as-is (never renamed). If a correctly-spelled file appears later,
+    # add it as an additional row.
+    "BIDTK258": [
+        ("IDT Assignment II 2025.pdf", 1),
+        ("IDT Assignment-01 2025.pdf", 2),
+        ("IDT MCQ @vtudeveloper.in.pdf", 3),
+        ("IDT Privious year question papers.pdf", 4),
+    ],
 }
 
 # Per-code storage subdirectories and module titles for STUDY_MATERIALS
@@ -157,6 +221,14 @@ STUDY_MATERIAL_SUBDIRS = {
         5: "module5",
         0: "additional",
     },
+    "BPLCK205C": {
+        1: "module1",
+        2: "module2",
+        3: "module3",
+        4: "module4",
+        5: "module5",
+        0: "additional",
+    },
 }
 # {code: {module_number: module_title}}
 STUDY_MATERIAL_TITLES = {
@@ -169,6 +241,14 @@ STUDY_MATERIAL_TITLES = {
         0: "Additional Resources",
     },
     "BICOK207": {
+        1: "Module 1",
+        2: "Module 2",
+        3: "Module 3",
+        4: "Module 4",
+        5: "Module 5",
+        0: "Additional Resources",
+    },
+    "BPLCK205C": {
         1: "Module 1",
         2: "Module 2",
         3: "Module 3",
@@ -241,12 +321,14 @@ def ensure_canonical_subjects():
 
 
 def ensure_study_materials():
-    """Register on-disk study-material PDFs lacking a document row.
+    """Register on-disk study files lacking a document row.
 
-    For each STUDY_MATERIALS code, every listed file present under
-    knowledge_base/<CODE>/ gets one knowledge_documents row (sequential
-    module_number slot, title=filename stem, status 'uploaded') unless a
-    row for (subject_code, original_filename) already exists. Existing
+    For each STUDY_MATERIALS code, every listed file present under its
+    directory gets one knowledge_documents row (module_number slot,
+    title=filename stem, status 'uploaded') unless a row for
+    (subject_code, original_filename) already exists. PDFs record their
+    pypdf page count; Office documents (.docx/.doc/.ppt/.pptx, served
+    as downloads by the existing document viewer) record 0. Existing
     rows are never updated or deleted. Files missing from disk are
     logged and skipped. Never raises: failures roll back and log.
     """
@@ -286,13 +368,26 @@ def ensure_study_materials():
             if not pdf_path.is_file():
                 print(f"  ! file missing, skipping: {code}/{filename}")
                 continue
-            try:
-                pages = len(PdfReader(str(pdf_path)).pages)
-            except Exception as error:
-                print(f"  ! unreadable PDF, skipping {filename}: {error}")
-                continue
-            if pages < 1:
-                print(f"  ! empty PDF, skipping: {filename}")
+            suffix = pdf_path.suffix.lower()
+            if suffix == ".pdf":
+                try:
+                    pages = len(PdfReader(str(pdf_path)).pages)
+                except Exception as error:
+                    print(f"  ! unreadable PDF, skipping {filename}: {error}")
+                    continue
+                if pages < 1:
+                    print(f"  ! empty PDF, skipping: {filename}")
+                    continue
+            elif suffix in (".docx", ".doc", ".ppt", ".pptx"):
+                # Office documents reuse the existing document viewer
+                # (/knowledge/document/<id> serves them as downloads);
+                # page counts do not apply, so 0 hides the label.
+                if pdf_path.stat().st_size < 1:
+                    print(f"  ! empty document, skipping: {filename}")
+                    continue
+                pages = 0
+            else:
+                print(f"  ! unsupported type, skipping: {filename}")
                 continue
             try:
                 db.session.execute(

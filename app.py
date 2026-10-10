@@ -1266,14 +1266,14 @@ def subject_detail(subject_code):
         module_numbers = []
 
     # Unnumbered file collections (BCEDK103, BENGK106, BMATS101,
-    # BKSKK107, BSFHK158):
+    # BMATS201, BKSKK107, BSFHK158, BIDTK258):
     # their files (primers, question papers, solved papers, question
     # banks, formula sheets, textbooks, scanned notes, ...) are not
     # module-wise, so each document
     # renders as its own unnumbered file card in the existing View File
     # format, never as Module 1-5.
     # Scoped to these codes only; other subjects are untouched.
-    if subject.get("code") in ("BCEDK103", "BENGK106", "BMATS101", "BKSKK107", "BSFHK158") and doc_rows:
+    if subject.get("code") in ("BCEDK103", "BENGK106", "BMATS101", "BMATS201", "BKSKK107", "BSFHK158", "BIDTK258") and doc_rows:
         for doc_row in doc_rows:
             doc_filename = (
                 doc_row["original_filename"]
