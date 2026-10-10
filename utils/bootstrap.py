@@ -1,8 +1,12 @@
 """First-run study content for a locally created database."""
 
+from pathlib import Path
+
 from sqlalchemy import text
 
 from utils.database import db
+
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
 
 DEFAULT_SUBJECTS = [
     ("BCS501", "Software Engineering & Project Management"),
@@ -44,12 +48,206 @@ DEFAULT_RESOURCES = [
     ("BCS501", "Software Engineering Notes", "Process models, estimation, testing and project management.", "Notes", None),
 ]
 
+# Canonical file-backed Semester-1 subjects. The boot ensure below
+# re-creates these rows if they were deleted and repairs a wrong
+# name/semester/branch/scheme/category so the subjects always list.
+# ONLY these codes are ever touched; credits, icon and description
+# are always left alone, and no other subject row is written.
+# (code, name, semester, branch, scheme, category)
+CANONICAL_SUBJECTS = [
+    ("BKSKK107", "Samskrutika Kannada", 1, "CSE", "2022", "Core"),
+    ("BSFHK158", "Scientific Foundations of Health", 1, "CSE", "2022", "Core"),
+]
+
+# Study-material PDFs committed under knowledge_base/<CODE>/.
+# (code, [(filename, module_number slot), ...]). module_number is a
+# sequential slot (same convention as the BENGK106/BMATS101 unnumbered
+# files); the subject page renders these codes as unnumbered file cards,
+# so the number never implies module content. Module 0 is avoided so
+# files never duplicate into the Additional Resources section.
+# Filenames must match the files on disk exactly.
+STUDY_MATERIALS = {
+    "BKSKK107": [
+        ("KANNADA QUESTIONS.pdf", 1),
+        ("Kannada Textbook and MCQs.pdf", 2),
+        ("SK QB 1.pdf", 3),
+        ("SK Model QP-1.pdf", 4),
+        ("SK QB 2.pdf", 5),
+        ("SK QB 3.pdf", 6),
+        ("DocScanner May 7, 2023 5-45 PM.pdf", 7),
+        ("DocScanner Apr 14, 2023 16-39.pdf", 8),
+    ],
+    "BSFHK158": [
+        ("SHF QB wid Ans TIE (1).pdf", 1),
+        ("SFH syllabus.pdf", 2),
+        ("sfh set 2 Solved.pdf", 3),
+        ("sfh set 1 solved.pdf", 4),
+        ("SFH QP2.pdf", 5),
+        ("SFH QP1.pdf", 6),
+        ("sfh prev year 21 QP.pdf", 7),
+        ("sfh prev sem QP.pdf", 8),
+        ("SFH Module 1.pdf", 9),
+        ("SFH Assignment 2.pdf", 10),
+        ("SCIENTIFIC_FOUNDATIONS_OF_HEALTH_QUESTION_BANK_230_231018_181032.pdf", 11),
+        ("Scientific Foundation Of Health MCQ.pdf", 12),
+        ("21SFH29set2.pdf", 13),
+        ("21SFH29set1.pdf", 14),
+    ],
+}
+
+
+def ensure_canonical_subjects():
+    """Re-create missing file-backed subject rows; repair wrong attrs.
+
+    Only CANONICAL_SUBJECTS codes are touched. Missing rows are
+    INSERTed (semester 1, CSE/2022, Core, 1 credit — matching the live
+    canonical rows). Existing rows keep their id/credits/icon/
+    description; only a wrong name/semester/branch/scheme/category is
+    repaired so the subject lists again. Never deletes. Never raises:
+    any failure rolls back that code and logs, so boot continues.
+    """
+    for code, name, semester, branch, scheme, category in CANONICAL_SUBJECTS:
+        try:
+            row = db.session.execute(
+                text("""
+                    SELECT id, subject_name, semester, branch, scheme,
+                           category
+                    FROM subjects
+                    WHERE subject_code = :c
+                """),
+                {"c": code},
+            ).mappings().first()
+            if row is None:
+                db.session.execute(
+                    text("""
+                        INSERT INTO subjects
+                            (subject_code, subject_name, semester, branch,
+                             scheme, credits, icon, category)
+                        VALUES (:c, :n, :s, :b, :sc, 1, '📚', :cat)
+                    """),
+                    {"c": code, "n": name, "s": semester, "b": branch,
+                     "sc": scheme, "cat": category},
+                )
+                db.session.commit()
+                print(f"  + subject restored: {code} ({name})")
+                continue
+            fix = {}
+            if row["subject_name"] != name:
+                fix["subject_name"] = name
+            if row["semester"] != semester:
+                fix["semester"] = semester
+            if row["branch"] != branch:
+                fix["branch"] = branch
+            if row["scheme"] != scheme:
+                fix["scheme"] = scheme
+            if (row["category"] or "Core") != category:
+                fix["category"] = category
+            if fix:
+                assignments = ", ".join(f"{k} = :{k}" for k in fix)
+                fix["c"] = code
+                db.session.execute(
+                    text(f"UPDATE subjects SET {assignments} "
+                         "WHERE subject_code = :c"),
+                    fix,
+                )
+                db.session.commit()
+                print(f"  ~ subject repaired: {code} {sorted(fix)}")
+        except Exception as error:
+            db.session.rollback()
+            print(f"  ! canonical subject {code} skipped: {error}")
+
+
+def ensure_study_materials():
+    """Register on-disk study-material PDFs lacking a document row.
+
+    For each STUDY_MATERIALS code, every listed file present under
+    knowledge_base/<CODE>/ gets one knowledge_documents row (sequential
+    module_number slot, title=filename stem, status 'uploaded') unless a
+    row for (subject_code, original_filename) already exists. Existing
+    rows are never updated or deleted. Files missing from disk are
+    logged and skipped. Never raises: failures roll back and log.
+    """
+    try:
+        from pypdf import PdfReader
+    except ImportError as error:
+        print(f"  ! study materials skipped (pypdf unavailable): {error}")
+        return
+    names = {c: n for c, n, _s, _b, _sc, _cat in CANONICAL_SUBJECTS}
+    for code, files in STUDY_MATERIALS.items():
+        try:
+            existing = {
+                r[0] for r in db.session.execute(
+                    text("""
+                        SELECT original_filename
+                        FROM knowledge_documents
+                        WHERE subject_code = :c
+                    """),
+                    {"c": code},
+                ).fetchall()
+            }
+        except Exception as error:
+            db.session.rollback()
+            print(f"  ! study materials for {code} skipped: {error}")
+            continue
+        for filename, module_number in files:
+            if filename in existing:
+                continue
+            pdf_path = PROJECT_ROOT / "knowledge_base" / code / filename
+            if not pdf_path.is_file():
+                print(f"  ! file missing, skipping: {code}/{filename}")
+                continue
+            try:
+                pages = len(PdfReader(str(pdf_path)).pages)
+            except Exception as error:
+                print(f"  ! unreadable PDF, skipping {filename}: {error}")
+                continue
+            if pages < 1:
+                print(f"  ! empty PDF, skipping: {filename}")
+                continue
+            try:
+                db.session.execute(
+                    text("""
+                        INSERT INTO knowledge_documents
+                            (subject_code, subject_name, module_number,
+                             module_title, title, original_filename,
+                             file_path, page_count, status)
+                        VALUES (:c, :n, :m, NULL, :t, :f, :p, :pages,
+                                'uploaded')
+                    """),
+                    {
+                        "c": code,
+                        "n": names[code],
+                        "m": module_number,
+                        "t": Path(filename).stem,
+                        "f": filename,
+                        "p": pdf_path.relative_to(PROJECT_ROOT).as_posix(),
+                        "pages": pages,
+                    },
+                )
+                db.session.commit()
+                print(f"  + study material: {code} mod={module_number} "
+                      f"{filename} ({pages} pages)")
+            except Exception as error:
+                db.session.rollback()
+                print(f"  ! study material {filename} skipped: {error}")
+
+
 def ensure_study_content():
     """Populate a brand-new database once, without touching existing data."""
     subject_count = db.session.execute(
         text("SELECT COUNT(*) FROM subjects")
     ).scalar() or 0
     if subject_count:
+        # Existing database: only the always-on restoration below runs;
+        # the first-run seed is skipped so existing data is untouched.
+        try:
+            ensure_canonical_subjects()
+        except Exception as error:
+            print(f"  ! canonical subjects skipped: {error}")
+        try:
+            ensure_study_materials()
+        except Exception as error:
+            print(f"  ! study materials skipped: {error}")
         return False
 
     try:
@@ -106,6 +304,17 @@ def ensure_study_content():
             )
 
         db.session.commit()
+
+        # Fresh database: also restore the canonical file-backed
+        # subjects and register their study materials.
+        try:
+            ensure_canonical_subjects()
+        except Exception as error:
+            print(f"  ! canonical subjects skipped: {error}")
+        try:
+            ensure_study_materials()
+        except Exception as error:
+            print(f"  ! study materials skipped: {error}")
         return True
     except Exception:
         db.session.rollback()

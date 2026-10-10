@@ -19,10 +19,6 @@ function escapeHtml(text) {
     return div.innerHTML;
 }
 
-function formatReply(text) {
-    return escapeHtml(text).replace(/\n/g, "<br>");
-}
-
 function scrollChat() {
     const messages = document.getElementById("chatMessages");
     messages.scrollTop = messages.scrollHeight;

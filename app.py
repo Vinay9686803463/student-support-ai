@@ -7,6 +7,7 @@ from flask import (
     Flask,
     abort,
     flash,
+    g,
     redirect,
     render_template,
     request,
@@ -15,6 +16,7 @@ from flask import (
     url_for
 )
 from sqlalchemy import bindparam, text
+from sqlalchemy.orm import load_only
 from werkzeug.security import check_password_hash, generate_password_hash
 
 from utils.database import (
@@ -59,9 +61,17 @@ NON_LISTED_SUBJECT_CODES = frozenset({"BCS515x", "BNSK559", "BPEK559"})
 # =========================================================
 
 def get_current_user():
+    # Cached per request in Flask's `g`: login_required() and the view
+    # function both need the current user, and without this cache every
+    # authenticated page issued the same SELECT twice. Same row, same
+    # shape — just one round-trip instead of two.
+    if "_current_user" in g:
+        return g._current_user
+
     user_id = session.get("user_id")
 
     if not user_id:
+        g._current_user = None
         return None
 
     try:
@@ -83,10 +93,12 @@ def get_current_user():
             }
         ).mappings().first()
 
+        g._current_user = result
         return result
 
     except Exception:
         db.session.rollback()
+        g._current_user = None
         return None
 
 
@@ -492,6 +504,49 @@ def logout():
 def dashboard():
 
     user = get_current_user()
+
+    # Fast path: all four counts in a single round-trip (was four
+    # sequential COUNT queries). Returns the exact same numbers; any
+    # failure (e.g. schema drift) rolls back and falls through to the
+    # individually guarded counts below, so the page never 500s.
+    try:
+        combined = db.session.execute(
+            text("""
+                SELECT
+                    (SELECT COUNT(*) FROM notes
+                      WHERE user_id = :uid) AS note_count,
+                    (SELECT COUNT(*) FROM conversations
+                      WHERE user_id = :uid) AS conversation_count,
+                    (SELECT COUNT(*) FROM subjects
+                      WHERE branch = :branch
+                        AND scheme = :scheme
+                        AND semester = :semester) AS subject_count,
+                    (SELECT COUNT(*) FROM questions q
+                      JOIN subjects s ON s.id = q.subject_id
+                      WHERE s.branch = :branch
+                        AND s.scheme = :scheme
+                        AND s.semester = :semester) AS question_count
+            """),
+            {
+                "uid": user["id"],
+                "branch": user["branch"],
+                "scheme": user["scheme"],
+                "semester": user["current_semester"]
+            }
+        ).mappings().first()
+
+        if combined is not None:
+            return render_template(
+                "dashboard.html",
+                user=user,
+                note_count=combined["note_count"] or 0,
+                conversation_count=combined["conversation_count"] or 0,
+                subject_count=combined["subject_count"] or 0,
+                question_count=combined["question_count"] or 0
+            )
+    except Exception as error:
+        db.session.rollback()
+        print("DASHBOARD COMBINED COUNT FALLBACK:", error)
 
     # Each count is guarded so the dashboard never 500s on
     # schema drift (e.g. live DB column names differ).
@@ -971,8 +1026,13 @@ def subject_detail(subject_code):
     if from_semester not in (1, 2, 3, 4, 5, 6, 7, 8):
         from_semester = subject["semester"]
 
+    # Only id/unit are used below (counts + unit cards); the large
+    # `answer` TEXT column stays deferred so the DB transfers less per
+    # row. Attribute access still works transparently (lazy-loads on
+    # demand), so callers see identical objects.
     questions = (
         Question.query
+        .options(load_only(Question.id, Question.unit))
         .filter_by(subject_id=subject_id)
         .order_by(Question.id.asc())
         .all()
@@ -981,6 +1041,10 @@ def subject_detail(subject_code):
     try:
         resources = (
             Resource.query
+            .options(load_only(Resource.id, Resource.subject_id,
+                               Resource.title, Resource.category,
+                               Resource.resource_type, Resource.url,
+                               Resource.is_featured))
             .filter_by(subject_id=subject_id)
             .order_by(Resource.id.asc())
             .all()
@@ -1201,13 +1265,15 @@ def subject_detail(subject_code):
     else:
         module_numbers = []
 
-    # Unnumbered file collections (BCEDK103, BENGK106, BMATS101):
+    # Unnumbered file collections (BCEDK103, BENGK106, BMATS101,
+    # BKSKK107, BSFHK158):
     # their files (primers, question papers, solved papers, question
-    # banks, formula sheets, ...) are not module-wise, so each document
+    # banks, formula sheets, textbooks, scanned notes, ...) are not
+    # module-wise, so each document
     # renders as its own unnumbered file card in the existing View File
     # format, never as Module 1-5.
     # Scoped to these codes only; other subjects are untouched.
-    if subject.get("code") in ("BCEDK103", "BENGK106", "BMATS101") and doc_rows:
+    if subject.get("code") in ("BCEDK103", "BENGK106", "BMATS101", "BKSKK107", "BSFHK158") and doc_rows:
         for doc_row in doc_rows:
             doc_filename = (
                 doc_row["original_filename"]
