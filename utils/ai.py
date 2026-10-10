@@ -300,9 +300,16 @@ STOPWORDS = {
 }
 
 
+# Precompiled once: _search_questions runs these per candidate question
+# on every chat message, and recompiling per call wasted CPU.
+_WORD_RE = re.compile(r"[a-z]{5,}")
+_CODE_RE = re.compile(r"[a-z]{2,}\d+[a-z]?")
+
+
 def _keywords(message):
-    words = re.findall(r"[a-z]{5,}", message.lower())
-    codes = re.findall(r"[a-z]{2,}\d+[a-z]?", message.lower())
+    lowered = message.lower()
+    words = _WORD_RE.findall(lowered)
+    codes = _CODE_RE.findall(lowered)
     return [w for w in words + codes if w not in STOPWORDS]
 
 
@@ -319,8 +326,9 @@ def _search_questions(message, questions):
         return []
     scored = []
     for q in questions:
-        text_words = set(re.findall(r"[a-z]{5,}", _question_text(q).lower()))
-        text_words |= set(re.findall(r"[a-z]{2,}\d+[a-z]?", _question_text(q).lower()))
+        text_lower = _question_text(q).lower()
+        text_words = set(_WORD_RE.findall(text_lower))
+        text_words.update(_CODE_RE.findall(text_lower))
         shared = keys & text_words
         if shared:
             scored.append((len(shared), q))

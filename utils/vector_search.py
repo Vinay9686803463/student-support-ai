@@ -2,6 +2,7 @@ import os
 
 import psycopg
 from dotenv import load_dotenv
+from functools import lru_cache
 from sentence_transformers import SentenceTransformer
 
 
@@ -31,14 +32,24 @@ def get_model():
 
 def create_query_embedding(question):
 
+    # Identical questions reuse the cached vector instead of re-running
+    # the transformer (inference is deterministic, so results match
+    # exactly). Retried / popular questions skip ~100ms+ of CPU work.
+    return list(_cached_embedding((question or "").strip()))
+
+
+@lru_cache(maxsize=128)
+def _cached_embedding(normalized_question):
+
     model = get_model()
 
     embedding = model.encode(
-        question,
+        normalized_question,
         normalize_embeddings=True,
     )
 
-    return embedding.tolist()
+    # lru_cache needs a hashable return value; callers get a fresh list.
+    return tuple(embedding.tolist())
 
 
 def search_knowledge(
@@ -51,12 +62,22 @@ def search_knowledge(
     if not question or not question.strip():
         return []
 
+    # Guard the LIMIT: non-positive values would mean "no limit" in
+    # Postgres and dump the table; garbage falls back to the default.
+    try:
+        limit = int(limit)
+    except (TypeError, ValueError):
+        limit = 5
+
+    if limit < 1:
+        limit = 5
+
     query_embedding = create_query_embedding(
         question.strip()
     )
 
     filters = []
-    parameters = [query_embedding]
+    final_parameters = [query_embedding]
 
     if subject_code:
 
@@ -64,7 +85,7 @@ def search_knowledge(
             "subject_code = %s"
         )
 
-        parameters.append(
+        final_parameters.append(
             subject_code
         )
 
@@ -74,7 +95,7 @@ def search_knowledge(
             "module_number = %s"
         )
 
-        parameters.append(
+        final_parameters.append(
             module_number
         )
 
@@ -91,8 +112,6 @@ def search_knowledge(
     else:
 
         where_clause = "WHERE embedding IS NOT NULL"
-
-    parameters.append(limit)
 
     sql = f"""
         SELECT
@@ -121,44 +140,6 @@ def search_knowledge(
     # The query vector is required twice:
     # once for similarity calculation
     # and once for ordering.
-
-    parameters_for_query = [
-        query_embedding
-    ]
-
-    if subject_code:
-        parameters_for_query.append(
-            subject_code
-        )
-
-    if module_number:
-        parameters_for_query.append(
-            module_number
-        )
-
-    parameters_for_query.append(
-        query_embedding
-    )
-
-    parameters_for_query.append(
-        limit
-    )
-
-    # Rebuild SQL parameters cleanly.
-    final_parameters = [
-        query_embedding
-    ]
-
-    if subject_code:
-        final_parameters.append(
-            subject_code
-        )
-
-    if module_number:
-        final_parameters.append(
-            module_number
-        )
-
     final_parameters.append(
         query_embedding
     )
@@ -167,8 +148,13 @@ def search_knowledge(
         limit
     )
 
+    # prepare_threshold=None keeps pooled/proxied connections working
+    # (same reason as knowledge_ingest.get_connection); connect_timeout
+    # fails fast instead of hanging a chat request on a dead database.
     with psycopg.connect(
-        DATABASE_URL
+        DATABASE_URL,
+        connect_timeout=10,
+        prepare_threshold=None,
     ) as connection:
 
         with connection.cursor() as cursor:

@@ -550,6 +550,19 @@ def _migrate_legacy_schema():
                             )
                         )
                         print(f"  + {table_name}.{column_name} column added.")
+            # Additive performance indexes only (CREATE ... IF NOT EXISTS
+            # never alters or drops anything). The (branch, scheme,
+            # semester) filter backs the dashboard, subjects, questions
+            # and chat-context queries on every page load.
+            for index_sql in (
+                "CREATE INDEX IF NOT EXISTS "
+                "idx_subjects_branch_scheme_semester "
+                "ON subjects (branch, scheme, semester)",
+            ):
+                try:
+                    connection.execute(text(index_sql))
+                except Exception as index_error:
+                    print(f"  ! index skipped: {index_error}")
     except Exception as error:
         # Never crash the app over a migration hiccup (e.g. a readonly
         # replica or a transient network blip). The raw-SQL fallbacks in
