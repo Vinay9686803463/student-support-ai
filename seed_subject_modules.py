@@ -47,7 +47,7 @@ REQUIRED = [
     ("BPWSK206", "Professional Writing Skills in English", 2),
     ("BICOK207", "Indian Constitution", 2),
     ("BIDTK258", "Innovation and Design Thinking", 2),
-    ("BPLCK205C", "Baasics of Java Programming", 2),
+    ("BPLCK205C", "Basics of Java Programming", 2),
     ("BMATS201", "Mathematics for CSE Stream-II", 2),
     ("BESCK204D", "Introduction to Mechanical Engineering", 2),
     ("BPHYS202", "Physics for CSE Stream", 2),

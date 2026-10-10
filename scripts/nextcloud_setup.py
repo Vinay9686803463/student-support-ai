@@ -49,7 +49,7 @@ SEMESTERS = {
         "BPWSK206 - Professional Writing Skills in English",
         "BICOK207 - Indian Constitution",
         "BIDTK258 - Innovation and Design Thinking",
-        "BPLCK205C - Baasics of Java Programming",
+        "BPLCK205C - Basics of Java Programming",
         "BMATS201 - Mathematics for CSE Stream-II",
         "BESCK204D - Introduction to Mechanical Engineering",
         "BPHYS202 - Physics for CSE Stream",

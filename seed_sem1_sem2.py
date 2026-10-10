@@ -33,7 +33,7 @@ KEEP = [
     (37, "BPWSK206", 2, "Professional Writing Skills in English", 2),
     (38, "BICOK207", 2, "Indian Constitution", 2),
     (41, "BIDTK258", 2, "Innovation and Design Thinking", 2),
-    (35, "BPLCK205x", 2, "Object-Oriented Programming with Java", 2),
+    (35, "BPLCK205x", 2, "Basics of Java Programming", 2),
     (28, "BMATS201", 2, "Mathematics", 2),
     (29, "BESCK204x", 2, "Mechanical Engineering", 2),
     (31, "BPHYS202", 2, "Physics", 2),

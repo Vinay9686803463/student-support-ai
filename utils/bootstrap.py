@@ -8,6 +8,76 @@ from utils.database import db
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 
+
+def _safename(filename):
+    """Console-safe filename for log lines.
+
+    Windows consoles (cp1252) raise UnicodeEncodeError printing emoji
+    such as the Hibiscus in one physics filename, which would abort the
+    whole registration run. Backslash-escaping keeps every terminal
+    working while staying informative.
+    """
+    return str(filename).encode("ascii", "backslashreplace").decode("ascii")
+
+
+def _safename(filename):
+    """Console-safe filename for log lines.
+
+    Windows consoles (cp1252) crash printing emoji (e.g. the Hibiscus in
+    a physics filename); the deployed Linux logs are UTF-8. Escaping
+    keeps both working and stays informative.
+    """
+    return str(filename).encode("ascii", "backslashreplace").decode("ascii")
+
+
+def log_message(message):
+    """Console print that never crashes on non-UTF-8 terminals.
+
+    Windows consoles default to cp1252, where logging a filename with
+    an emoji (or any non-Latin character) raises UnicodeEncodeError and
+    would abort the whole registration run. Fall back to an
+    ASCII-escaped line instead of crashing.
+    """
+    try:
+        print(message, flush=True)
+    except UnicodeEncodeError:
+        print(ascii(message), flush=True)
+
+
+def resolve_study_file(code, filename, module_number):
+    """Locate an on-disk study file, or None when absent.
+
+    Tries the mapped location first (moduleN/ or additional/
+    subdirectories, else flat under knowledge_base/<CODE>/), then falls
+    back to the other known locations. The fallback lets one stored
+    file back two document rows (e.g. BPHYS202 Module 5 registered in
+    both its module section and Additional Resources) while every row
+    still points at the real file — a row is never created for a file
+    that is not on disk.
+    """
+    subdir = STUDY_MATERIAL_SUBDIRS.get(code, {}).get(module_number, "")
+    candidates = []
+    if subdir:
+        candidates.append(
+            PROJECT_ROOT / "knowledge_base" / code / subdir / filename
+        )
+    candidates.append(PROJECT_ROOT / "knowledge_base" / code / filename)
+    for n in (1, 2, 3, 4, 5):
+        candidates.append(
+            PROJECT_ROOT / "knowledge_base" / code / f"module{n}" / filename
+        )
+    candidates.append(
+        PROJECT_ROOT / "knowledge_base" / code / "additional" / filename
+    )
+    seen = set()
+    for candidate in candidates:
+        if candidate in seen:
+            continue
+        seen.add(candidate)
+        if candidate.is_file():
+            return candidate
+    return None
+
 DEFAULT_SUBJECTS = [
     ("BCS501", "Software Engineering & Project Management"),
     ("BCS502", "Computer Networks"),
@@ -60,11 +130,15 @@ CANONICAL_SUBJECTS = [
     ("BESCK204D", "Introduction to Mechanical Engineering", 2, "CSE", "2022", "Core", 4),
     ("BICOK207", "Indian Constitution", 2, "CSE", "2022", "Core", 1),
     ("BMATS201", "Mathematics for CSE Stream-II", 2, "CSE", "2022", "Core", 4),
-    # NOTE: "Baasics" is the VTU-official spelling used by the live row
-    # and seed_subject_modules.py — do not "correct" it here, or the two
-    # scripts will flip-flop the name on every run.
-    ("BPLCK205C", "Baasics of Java Programming", 2, "CSE", "2022", "Core", 4),
+    # NOTE: the corrected spelling "Basics" (not VTU's "Baasics"
+    # typo) is canonical everywhere: this table, seed_subject_modules.py,
+    # seed_semesters_1_to_4.py, seed_sem1_sem2.py, fix_sem_codes_1_to_4.py
+    # and rename_sem2_subjects.py must all use it, or re-running any of
+    # them would flip-flop the displayed name.
+    ("BPLCK205C", "Basics of Java Programming", 2, "CSE", "2022", "Core", 4),
     ("BIDTK258", "Innovation and Design Thinking", 2, "CSE", "2022", "Core", 1),
+    ("BPOPS203", "Principles of Programming Using C", 2, "CSE", "2022", "Core", 4),
+    ("BPHYS202", "Physics for CSE Stream", 2, "CSE", "2022", "Core", 4),
 ]
 
 # Study-material PDFs committed under knowledge_base/<CODE>/.
@@ -195,6 +269,89 @@ STUDY_MATERIALS = {
         ("IDT MCQ @vtudeveloper.in.pdf", 3),
         ("IDT Privious year question papers.pdf", 4),
     ],
+    # C-programming files requested but NOT listed: 4 month/year "PDFs"
+    # (Feb-2023.pdf, Jan-2024.pdf, July-2023.pdf, July-2024.pdf) are HTML
+    # pages, not PDFs; 5 files are absent from Downloads
+    # ('Arithmetic_Operators_in_C.docx', 'Paper-1-BPOPS103- Model Paper
+    # Solution.pdf', 'Paper-2-BPOPS103- Model Paper Solution.pdf',
+    # 'Pointers1-pgm.pptx', 'QB_1&2&Module.docx'). Near-matches exist
+    # ('Paper-1/2-...-2022-23.pdf', 'QB_1&2Module.docx') and were NOT
+    # substituted. Abbreviated requests resolved to
+    # 'C programs_examples_Algorithms_Flowcharts.docx' and
+    # 'Computer fundamentals and programming in C 2nd ed.pdf'.
+    # Module 2 filename verified Latin O (no Cyrillic characters).
+    "BPOPS203": [
+        ("BPOPS103 Mod1@AzDOCUMENTS.in.pdf", 1),
+        ("BPOPS103 Mod2@AzDOCUMENTS.in.pdf", 2),
+        ("BPOPS103 Mod3@AzDOCUMENTS.in.pdf", 3),
+        ("BPOPS103 Mod4@AzDOCUMENTS.in.pdf", 4),
+        ("BPOPS103 Mod5@AzDOCUMENTS.in.pdf", 5),
+        ("Module 1.pptx", 0),
+        ("module 2.pptx", 0),
+        ("Module3.pptx", 0),
+        ("Module_4.pdf", 0),
+        ("Module5.pptx", 0),
+        ("1AMCS0000455_CS_BPOPS203.pdf", 0),
+        ("22POP13 IMPORTANT Q-Ans.pdf", 0),
+        ("22POP13LAB.pdf", 0),
+        ("22POP13set1.pdf", 0),
+        ("Assignment_Operators_in_C.docx", 0),
+        ("Bitwise_Operators_in_C.docx", 0),
+        ("BPOPS203-IA-FINAL.xlsx", 0),
+        ("C Program Assignment3.docx", 0),
+        ("C Programming.pptx", 0),
+        ("C programs_examples_Algorithms_Flowcharts.docx", 0),
+        ("C programs_examples_errors_in_c.docx", 0),
+        ("Computer fundamentals and programming in C 2nd ed.pdf", 0),
+        ("Conditional_Operators_in_C.docx", 0),
+        ("Input output statements in C.docx", 0),
+        ("Logical_Operators_in_C.docx", 0),
+        ("M3-2.pdf", 0),
+        ("Model Question Paper.pdf", 0),
+        ("Module 5 - Files.pptx", 0),
+        ("Module 5 structures_files.pptx", 0),
+        ("Module1ACET.pptx", 0),
+        ("Module4-1.pptx", 0),
+        ("Pointers ppt.pptx", 0),
+        ("Relational_Operators_in_C.docx", 0),
+        ("Solutions.docx", 0),
+        ("Unary_Operators_in_C.docx", 0),
+    ],
+    # 'BPHYS102_202 MODULE 5.pdf' is intentionally listed twice (slots 5
+    # and 0): one stored file, two document rows, so it is available in
+    # both the Module 5 section and Additional Resources. The on-disk
+    # name below uses an escape; the real file is 'physics <HIBISCUS>.pdf'
+    # (U+1F33A) — registered exactly as found, never renamed.
+    "BPHYS202": [
+        ("BPHYS102_202 MODULE 1.pdf", 1),
+        ("Module 2 Quantum Mechanics Notes.pdf", 2),
+        ("module-3-quantum-computing-quantum-gates (1).pdf", 3),
+        ("BPHYS102_202 MODULE 4.pdf", 4),
+        ("BPHYS102_202 MODULE 5.pdf", 5),
+        ("22_scheme_physics_for_cse_module_4_notes.pdf", 0),
+        # Same stored file as the Module 5 row above (explicit subdir
+        # override); one file on disk, two document rows.
+        ("BPHYS102_202 MODULE 5.pdf", 0, "module5"),
+        ("Module 5 Physics of Animation.pdf", 0),
+        ("4-2024-Jan-Solved Numerical-CSE.pdf", 0),
+        ("5-2024-july-solved numericals-CSE-WWM.pdf", 0),
+        ("7-2025-Jan-Solved Numerical-CSE-WWM.pdf", 0),
+        ("Assignment I- Physics.pdf", 0),
+        ("Assignment II- Physics.pdf", 0),
+        ("Assignment III- Physics.pdf", 0),
+        ("BPHYS102_202 MODEL QP2 WITH SOLUTION.pdf", 0),
+        ("BPHYS102_202 PQP 1.pdf", 0),
+        ("BPHYS102_202 QUESTION BANK ALL MODULE .pdf", 0),
+        ("Model question paper Physics - converted.pdf", 0),
+        ("Model question paper Physics.pdf", 0),
+        ("phy aas.pdf", 0),
+        ("PHY_Quantum Mechanis_Part 1.pdf", 0),
+        ("physics assignment 2.pdf", 0),
+        ("Physics Handbook.pdf", 0),
+        ("physics \U0001f33a.pdf", 0),
+        ("SOLVED NUMERICALS -JAN 2023 - CSE-STREAM.pdf", 0),
+        ("SOLVED NUMERICALS -JULY 2023 - CSE-STREAM.pdf", 0),
+    ],
 }
 
 # Per-code storage subdirectories and module titles for STUDY_MATERIALS
@@ -229,6 +386,22 @@ STUDY_MATERIAL_SUBDIRS = {
         5: "module5",
         0: "additional",
     },
+    "BPOPS203": {
+        1: "module1",
+        2: "module2",
+        3: "module3",
+        4: "module4",
+        5: "module5",
+        0: "additional",
+    },
+    "BPHYS202": {
+        1: "module1",
+        2: "module2",
+        3: "module3",
+        4: "module4",
+        5: "module5",
+        0: "additional",
+    },
 }
 # {code: {module_number: module_title}}
 STUDY_MATERIAL_TITLES = {
@@ -249,6 +422,22 @@ STUDY_MATERIAL_TITLES = {
         0: "Additional Resources",
     },
     "BPLCK205C": {
+        1: "Module 1",
+        2: "Module 2",
+        3: "Module 3",
+        4: "Module 4",
+        5: "Module 5",
+        0: "Additional Resources",
+    },
+    "BPOPS203": {
+        1: "Module 1",
+        2: "Module 2",
+        3: "Module 3",
+        4: "Module 4",
+        5: "Module 5",
+        0: "Additional Resources",
+    },
+    "BPHYS202": {
         1: "Module 1",
         2: "Module 2",
         3: "Module 3",
@@ -315,6 +504,27 @@ def ensure_canonical_subjects():
                 )
                 db.session.commit()
                 print(f"  ~ subject repaired: {code} {sorted(fix)}")
+            try:
+                # Keep the subject_name stamped on this subject's already
+                # registered study-material rows in sync (display
+                # consistency only; routing/filtering uses subject_code
+                # and is unaffected). Table may not exist yet — skip then.
+                repaired_docs = db.session.execute(
+                    text("""
+                        UPDATE knowledge_documents
+                        SET subject_name = :n
+                        WHERE subject_code = :c
+                          AND subject_name != :n
+                    """),
+                    {"n": name, "c": code},
+                ).rowcount
+                if repaired_docs:
+                    db.session.commit()
+                    print(f"  ~ {repaired_docs} document row(s) renamed "
+                          f"for {code}")
+            except Exception as doc_error:
+                db.session.rollback()
+                print(f"  ! document names for {code} skipped: {doc_error}")
         except Exception as error:
             db.session.rollback()
             print(f"  ! canonical subject {code} skipped: {error}")
@@ -324,11 +534,12 @@ def ensure_study_materials():
     """Register on-disk study files lacking a document row.
 
     For each STUDY_MATERIALS code, every listed file present under its
-    directory gets one knowledge_documents row (module_number slot,
-    title=filename stem, status 'uploaded') unless a row for
-    (subject_code, original_filename) already exists. PDFs record their
-    pypdf page count; Office documents (.docx/.doc/.ppt/.pptx, served
-    as downloads by the existing document viewer) record 0. Existing
+    directory gets one knowledge_documents row per listed
+    (filename, module_number) slot (title=filename stem, status
+    'uploaded') unless a row for that triple already exists. PDFs
+    record their
+    pypdf page count; Office documents (.docx/.doc/.ppt/.pptx/.xlsx,
+    served as downloads by the existing document viewer) record 0. Existing
     rows are never updated or deleted. Files missing from disk are
     logged and skipped. Never raises: failures roll back and log.
     """
@@ -342,10 +553,13 @@ def ensure_study_materials():
     titles = STUDY_MATERIAL_TITLES
     for code, files in STUDY_MATERIALS.items():
         try:
+            # Keyed by (filename, module): one subject may intentionally
+            # list the same file under two slots (e.g. BPHYS202 Module 5
+            # appears in both Module 5 and Additional Resources).
             existing = {
-                row[0] for row in db.session.execute(
+                (row[0], row[1]) for row in db.session.execute(
                     text("""
-                        SELECT original_filename
+                        SELECT original_filename, module_number
                         FROM knowledge_documents
                         WHERE subject_code = :c
                     """),
@@ -356,38 +570,44 @@ def ensure_study_materials():
             db.session.rollback()
             print(f"  ! study materials for {code} skipped: {error}")
             continue
-        for filename, module_number in files:
-            if filename in existing:
+        for entry in files:
+            filename, module_number = entry[0], entry[1]
+            if (filename, module_number) in existing:
                 continue
-            subdir = subdirs.get(code, {}).get(module_number, "")
+            subdir = (
+                entry[2]
+                if len(entry) > 2
+                else subdirs.get(code, {}).get(module_number, "")
+            )
             module_title = titles.get(code, {}).get(module_number)
             if subdir:
                 pdf_path = PROJECT_ROOT / "knowledge_base" / code / subdir / filename
             else:
                 pdf_path = PROJECT_ROOT / "knowledge_base" / code / filename
             if not pdf_path.is_file():
-                print(f"  ! file missing, skipping: {code}/{filename}")
+                print(f"  ! file missing, skipping: {code}/{_safename(filename)}")
                 continue
             suffix = pdf_path.suffix.lower()
             if suffix == ".pdf":
                 try:
                     pages = len(PdfReader(str(pdf_path)).pages)
                 except Exception as error:
-                    print(f"  ! unreadable PDF, skipping {filename}: {error}")
+                    print(f"  ! unreadable PDF, skipping {_safename(filename)}: {_safename(error)}")
                     continue
                 if pages < 1:
-                    print(f"  ! empty PDF, skipping: {filename}")
+                    print(f"  ! empty PDF, skipping: {_safename(filename)}")
                     continue
-            elif suffix in (".docx", ".doc", ".ppt", ".pptx"):
+            elif suffix in (".docx", ".doc", ".ppt", ".pptx", ".xlsx"):
                 # Office documents reuse the existing document viewer
-                # (/knowledge/document/<id> serves them as downloads);
+                # (/knowledge/document/<id> serves them as downloads;
+                # .xlsx falls back to application/octet-stream there);
                 # page counts do not apply, so 0 hides the label.
                 if pdf_path.stat().st_size < 1:
-                    print(f"  ! empty document, skipping: {filename}")
+                    print(f"  ! empty document, skipping: {_safename(filename)}")
                     continue
                 pages = 0
             else:
-                print(f"  ! unsupported type, skipping: {filename}")
+                print(f"  ! unsupported type, skipping: {_safename(filename)}")
                 continue
             try:
                 db.session.execute(
@@ -412,10 +632,10 @@ def ensure_study_materials():
                 )
                 db.session.commit()
                 print(f"  + study material: {code} mod={module_number} "
-                      f"{filename} ({pages} pages)")
+                      f"{_safename(filename)} ({pages} pages)")
             except Exception as error:
                 db.session.rollback()
-                print(f"  ! study material {filename} skipped: {error}")
+                print(f"  ! study material {_safename(filename)} skipped: {_safename(error)}")
 
 
 def ensure_study_content():

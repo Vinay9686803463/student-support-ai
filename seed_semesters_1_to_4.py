@@ -29,7 +29,7 @@ SUBJECTS = [
     ("BPWSK206", "Professional Writing Skills in English", 2, "Core"),
     ("BICOK207", "Indian Constitution", 2, "Core"),
     ("BIDTK258", "Innovation and Design Thinking", 2, "Core"),
-    ("BPLCK205C", "Baasics of Java Programming", 2, "Core"),
+    ("BPLCK205C", "Basics of Java Programming", 2, "Core"),
     ("BMATS201", "Mathematics for CSE Stream-II", 2, "Core"),
     ("BESCK204D", "Introduction to Mechanical Engineering", 2, "Core"),
     ("BPHYS202", "Physics for CSE Stream", 2, "Core"),

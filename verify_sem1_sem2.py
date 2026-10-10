@@ -26,7 +26,7 @@ SEM2_EXPECTED = [
     "Professional Writing Skills in English",
     "Indian Constitution",
     "Innovation and Design Thinking",
-    "Baasics of Java Programming",
+    "Basics of Java Programming",
     "Mathematics for CSE Stream-II",
     "Introduction to Mechanical Engineering",
     "Physics for CSE Stream",

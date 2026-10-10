@@ -1,7 +1,8 @@
 """Rename 5 Semester-2 subjects to exact requested display names.
 
 Same rows, same codes, no duplicates. All other semesters untouched.
-NOTE: 'Baasics of Java Programming' spelling is intentional per request.
+NOTE: corrected spelling 'Basics of Java Programming' per request
+(supersedes the earlier VTU 'Baasics' spelling).
 
 Run: venv\\Scripts\\python.exe rename_sem2_subjects.py
 Idempotent: safe to re-run.
@@ -14,7 +15,7 @@ from utils.database import db
 
 # (id, expected_code, new_name) — all must currently be semester 2.
 RENAMES = [
-    (35, "BPLCK205x", "Baasics of Java Programming"),
+    (35, "BPLCK205x", "Basics of Java Programming"),
     (28, "BMATS201", "Mathematics for CSE Stream-II"),
     (29, "BESCK204x", "Introduction to Mechanical Engineering"),
     (31, "BPHYS202", "Physics for CSE Stream"),
@@ -25,7 +26,7 @@ EXPECTED_SEM2 = sorted([
     "Professional Writing Skills in English",
     "Indian Constitution",
     "Innovation and Design Thinking",
-    "Baasics of Java Programming",
+    "Basics of Java Programming",
     "Mathematics for CSE Stream-II",
     "Introduction to Mechanical Engineering",
     "Physics for CSE Stream",
