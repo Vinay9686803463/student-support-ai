@@ -1,0 +1,2084 @@
+1.Develop a Program in C for the following:
+a) Declare a calendar as an array of 7 elements (A dynamically Created array) to represent
+7 days of a week. Each Element of the array is a structure having three fields. The first
+field is the name of the Day (A dynamically allocated String), The second field is the
+date of the Day (A integer), the third field is the description of the activity for a
+particular day (A dynamically allocated String).
+b) Write functions create(), read() and display(); to create the calendar, to read the data
+from the keyboard and to print weeks activity details report on screen.
+
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+
+#define DAYS 7
+#define MAX_LEN 50
+
+// Structure for a day
+typedef struct {
+    char *dayName;    // dynamically allocated string
+    int date;
+    char *activity;   // dynamically allocated string
+} Calendar;
+
+// Function to create calendar dynamically
+Calendar* create() {
+    Calendar *week = (Calendar*)malloc(DAYS * sizeof(Calendar));
+    if (week == NULL) {
+        printf("Memory not allocated!\n");
+        exit(0);
+    }
+
+    // Allocate memory for day names and activities
+    for (int i = 0; i < DAYS; i++) {
+        week[i].dayName = (char*)malloc(MAX_LEN * sizeof(char));
+        week[i].activity = (char*)malloc(MAX_LEN * sizeof(char));
+        if (!week[i].dayName || !week[i].activity) {
+            printf("Memory allocation failed!\n");
+            exit(0);
+        }
+    }
+
+    return week;
+}
+
+// Function to read data from user
+void read(Calendar *week) {
+    printf("Enter details for 7 days:\n");
+    for (int i = 0; i < DAYS; i++) {
+        printf("\nDay %d Name: ", i + 1);
+        scanf(" %[^\n]", week[i].dayName);  // read string with spaces
+        printf("Date (integer): ");
+        scanf("%d", &week[i].date);
+        printf("Activity Description: ");
+        scanf(" %[^\n]", week[i].activity);
+    }
+}
+
+// Function to display calendar
+void display(Calendar *week) {
+    printf("\n------ WEEKLY ACTIVITY REPORT ------\n");
+    printf("%-10s %-5s %-30s\n", "Day", "Date", "Activity");
+    printf("-------------------------------------------\n");
+    for (int i = 0; i < DAYS; i++) {
+        printf("%-10s %-5d %-30s\n", week[i].dayName, week[i].date, week[i].activity);
+    }
+}
+
+int main() {
+    Calendar *week;
+
+    week = create();
+    read(week);
+    display(week);
+
+    // Free allocated memory
+    for (int i = 0; i < DAYS; i++) {
+        free(week[i].dayName);
+        free(week[i].activity);
+    }
+    free(week);
+
+    return 0;
+}
+SAMPLE OUTPUT
+sql
+Copy code
+Enter details for 7 days:
+
+Day 1 Name: Monday
+Date (integer): 1
+Activity Description: Team Meeting
+
+Day 2 Name: Tuesday
+Date (integer): 2
+Activity Description: Project Work
+
+Day 3 Name: Wednesday
+Date (integer): 3
+Activity Description: Client Call
+
+Day 4 Name: Thursday
+Date (integer): 4
+Activity Description: Code Review
+
+Day 5 Name: Friday
+Date (integer): 5
+Activity Description: Presentation
+
+Day 6 Name: Saturday
+Date (integer): 6
+Activity Description: Workshop
+
+Day 7 Name: Sunday
+Date (integer): 7
+Activity Description: Rest Day
+
+------ WEEKLY ACTIVITY REPORT ------
+Day        Date  Activity                      
+-------------------------------------------
+Monday     1     Team Meeting                 
+Tuesday    2     Project Work                 
+Wednesday  3     Client Call                  
+Thursday   4     Code Review                  
+Friday     5     Presentation                 
+Saturday   6     Workshop                     
+Sunday     7     Rest Day                      
+Features
+Uses dynamic memory allocation for both array and strings.
+
+create() → Allocates memory
+
+read() → Reads data from keyboard
+
+display() → Prints weekly report in tabular format
+
+Frees memory at the end.
+
+2.Develop a Program in C for the following operations on Strings.
+a. Read a main String (STR), a Pattern String (PAT) and a Replace String (REP)
+b. Perform Pattern Matching Operation: Find and Replace all occurrences of PAT in
+STR with REP if PAT exists in STR. Report suitable messages in case PAT does not
+exist in STR
+Support the program with functions for each of the above operations. Don't use Built-in
+functions. 
+
+#include <stdio.h>
+#include <stdlib.h>
+
+#define MAX 1000
+
+// Function to read strings
+void readStrings(char *STR, char *PAT, char *REP) {
+    printf("Enter main string (STR): ");
+    scanf(" %[^\n]", STR);
+    printf("Enter pattern string (PAT): ");
+    scanf(" %[^\n]", PAT);
+    printf("Enter replace string (REP): ");
+    scanf(" %[^\n]", REP);
+}
+
+// Function to find length of a string
+int strLen(char *s) {
+    int len = 0;
+    while (s[len] != '\0') len++;
+    return len;
+}
+
+// Function to check if PAT occurs at STR[pos]
+int matchAt(char *STR, char *PAT, int pos) {
+    int i = 0;
+    while (PAT[i] != '\0') {
+        if (STR[pos + i] == '\0' || STR[pos + i] != PAT[i])
+            return 0; // mismatch
+        i++;
+    }
+    return 1; // match
+}
+
+// Function to replace all occurrences of PAT in STR with REP
+void replacePattern(char *STR, char *PAT, char *REP) {
+    int lenSTR = strLen(STR);
+    int lenPAT = strLen(PAT);
+    int lenREP = strLen(REP);
+
+    char result[MAX];
+    int i = 0, j = 0;
+    int found = 0;
+
+    while (i < lenSTR) {
+        if (matchAt(STR, PAT, i)) {
+            found = 1;
+            // Copy REP into result
+            for (int k = 0; k < lenREP; k++)
+                result[j++] = REP[k];
+            i += lenPAT; // skip PAT in STR
+        } else {
+            result[j++] = STR[i++];
+        }
+    }
+
+    result[j] = '\0';
+
+    if (found) {
+        printf("\nPattern replaced successfully!\n");
+        printf("Updated string: %s\n", result);
+    } else {
+        printf("\nPattern '%s' not found in the main string.\n", PAT);
+    }
+}
+
+int main() {
+    char STR[MAX], PAT[MAX], REP[MAX];
+
+    readStrings(STR, PAT, REP);
+    replacePattern(STR, PAT, REP);
+
+    return 0;
+}
+
+SAMPLE OUTPUT
+Example 1: Pattern exists
+go
+Copy code
+Enter main string (STR): hello world, hello everyone
+Enter pattern string (PAT): hello
+Enter replace string (REP): hi
+
+Pattern replaced successfully!
+Updated string: hi world, hi everyone
+Example 2: Pattern does not exist
+go
+Copy code
+Enter main string (STR): hello world, hello everyone
+Enter pattern string (PAT): bye
+Enter replace string (REP): hi
+
+Pattern 'bye' not found in the main string.
+
+3.Develop a menu driven Program in C for the following operations on STACK of Integers
+(Array Implementation of Stack with maximum size MAX)
+a. Push an Element on to Stack
+b. Pop an Element from Stack
+c. Demonstrate how Stack can be used to check Palindrome
+d. Demonstrate Overflow and Underflow situations on Stack
+e. Display the status of Stack
+f. Exit
+Support the program with appropriate functions for each of the above operation.
+
+#include <stdio.h>
+#include <stdlib.h>
+
+#define MAX 5   // Maximum size of the stack
+
+int stack[MAX];
+int top = -1;
+
+// Function to push element onto stack
+void push() {
+    if (top == MAX - 1) {
+        printf("Stack Overflow! Cannot push more elements.\n");
+        return;
+    }
+    int x;
+    printf("Enter element to push: ");
+    scanf("%d", &x);
+    stack[++top] = x;
+    printf("%d pushed onto stack.\n", x);
+}
+
+// Function to pop element from stack
+void pop() {
+    if (top == -1) {
+        printf("Stack Underflow! No element to pop.\n");
+        return;
+    }
+    int x = stack[top--];
+    printf("Popped element: %d\n", x);
+}
+
+// Function to display stack
+void display() {
+    if (top == -1) {
+        printf("Stack is empty.\n");
+        return;
+    }
+    printf("Stack elements (top to bottom): ");
+    for (int i = top; i >= 0; i--)
+        printf("%d ", stack[i]);
+    printf("\n");
+}
+
+// Function to check if stack forms a palindrome
+void checkPalindrome() {
+    if (top == -1) {
+        printf("Stack is empty. Cannot check palindrome.\n");
+        return;
+    }
+    int i = 0, j = top;
+    int isPalindrome = 1;
+    while (i < j) {
+        if (stack[i] != stack[j]) {
+            isPalindrome = 0;
+            break;
+        }
+        i++;
+        j--;
+    }
+    if (isPalindrome)
+        printf("Stack elements form a palindrome.\n");
+    else
+        printf("Stack elements do NOT form a palindrome.\n");
+}
+
+// Function to demonstrate overflow and underflow
+void demoOverflowUnderflow() {
+    printf("Demonstrating underflow:\n");
+    pop();  // Attempt to pop (may underflow)
+
+    printf("Demonstrating overflow:\n");
+    for (int i = 1; i <= MAX + 2; i++) {
+        printf("Pushing %d: ", i*10);
+        if (top == MAX - 1)
+            printf("Stack Overflow! Cannot push %d\n", i*10);
+        else {
+            stack[++top] = i*10;
+            printf("Pushed %d\n", i*10);
+        }
+    }
+}
+
+int main() {
+    int choice;
+    do {
+        printf("\n--- STACK MENU ---\n");
+        printf("1. Push an Element\n");
+        printf("2. Pop an Element\n");
+        printf("3. Check Palindrome\n");
+        printf("4. Demonstrate Overflow/Underflow\n");
+        printf("5. Display Stack\n");
+        printf("6. Exit\n");
+        printf("Enter your choice: ");
+        scanf("%d", &choice);
+
+        switch(choice) {
+            case 1: push(); break;
+            case 2: pop(); break;
+            case 3: checkPalindrome(); break;
+            case 4: demoOverflowUnderflow(); break;
+            case 5: display(); break;
+            case 6: printf("Exiting...\n"); break;
+            default: printf("Invalid choice!\n");
+        }
+    } while(choice != 6);
+
+    return 0;
+}
+
+SAMPLE OUTPUT
+mathematica
+Copy code
+--- STACK MENU ---
+1. Push an Element
+2. Pop an Element
+3. Check Palindrome
+4. Demonstrate Overflow/Underflow
+5. Display Stack
+6. Exit
+Enter your choice: 1
+Enter element to push: 1
+1 pushed onto stack.
+
+Enter your choice: 1
+Enter element to push: 2
+2 pushed onto stack.
+
+Enter your choice: 1
+Enter element to push: 1
+1 pushed onto stack.
+
+Enter your choice: 5
+Stack elements (top to bottom): 1 2 1
+
+Enter your choice: 3
+Stack elements form a palindrome.
+
+Enter your choice: 2
+Popped element: 1
+
+Enter your choice: 3
+Stack elements do NOT form a palindrome.
+
+Enter your choice: 4
+Demonstrating underflow:
+Popped element: 2
+Demonstrating overflow:
+Pushing 10: Pushed 10
+Pushing 20: Pushed 20
+Pushing 30: Pushed 30
+Pushing 40: Pushed 40
+Pushing 50: Pushed 50
+Pushing 60: Stack Overflow! Cannot push 60
+Pushing 70: Stack Overflow! Cannot push 70
+
+Enter your choice: 5
+Stack elements (top to bottom): 50 40 30 20 10
+
+Enter your choice: 6
+Exiting...
+
+4.Develop a Program in C for converting an Infix Expression to Postfix Expression. Program
+should support for both parenthesized and free parenthesized
+expressions with the operators: +, -, *, /, % (Remainder), ^ (Power) and alphanumeric
+operands.
+#include <stdio.h>
+#include <stdlib.h>
+#include <ctype.h>
+#include <string.h>
+
+#define MAX 100
+
+char stack[MAX];
+int top = -1;
+
+// Push function
+void push(char c) {
+    if (top == MAX - 1) {
+        printf("Stack Overflow!\n");
+        return;
+    }
+    stack[++top] = c;
+}
+
+// Pop function
+char pop() {
+    if (top == -1)
+        return '\0';
+    return stack[top--];
+}
+
+// Peek function
+char peek() {
+    if (top == -1)
+        return '\0';
+    return stack[top];
+}
+
+// Function to return precedence of operators
+int precedence(char op) {
+    switch(op) {
+        case '^': return 3;
+        case '*': case '/': case '%': return 2;
+        case '+': case '-': return 1;
+        default: return 0;
+    }
+}
+
+// Function to check if character is operator
+int isOperator(char c) {
+    return (c == '+' || c == '-' || c == '*' || c == '/' || c == '%' || c == '^');
+}
+
+// Function to convert infix to postfix
+void infixToPostfix(char infix[], char postfix[]) {
+    int i = 0, j = 0;
+    char c;
+
+    while (infix[i] != '\0') {
+        c = infix[i];
+
+        if (isalnum(c)) {
+            postfix[j++] = c;  // Operand goes directly to postfix
+        }
+        else if (c == '(') {
+            push(c);
+        }
+        else if (c == ')') {
+            while (top != -1 && peek() != '(')
+                postfix[j++] = pop();
+            pop(); // Remove '('
+        }
+        else if (isOperator(c)) {
+            while (top != -1 && precedence(peek()) >= precedence(c)) {
+                if(c == '^' && peek() == '^')  // Right-associative for ^
+                    break;
+                postfix[j++] = pop();
+            }
+            push(c);
+        }
+        i++;
+    }
+
+    while (top != -1)
+        postfix[j++] = pop();
+
+    postfix[j] = '\0';
+}
+
+int main() {
+    char infix[MAX], postfix[MAX];
+
+    printf("Enter an infix expression: ");
+    scanf(" %[^\n]", infix);
+
+    infixToPostfix(infix, postfix);
+
+    printf("Postfix expression: %s\n", postfix);
+
+    return 0;
+}
+
+
+ SAMPLE OUTPUT
+Example 1: With parentheses
+Enter an infix expression: (a+b)*c
+Postfix expression: ab+c*
+
+Example 2: Without parentheses
+Enter an infix expression: a+b*c
+Postfix expression: abc*+
+
+Example 3: Complex expression
+Enter an infix expression: a+b*(c^d-e)^(f+g*h)-i
+Postfix expression: abcd^e-fgh*+^*+i-
+
+5.Develop a Program in C for the following Stack Applications
+a. Evaluation of Suffix expression with single digit operands and operators: +, -, *, /, %,^
+b. Solving Tower of Hanoi problem with n disks
+
+
+#include <stdio.h>
+#include <stdlib.h>
+#include <math.h>
+#include <ctype.h>
+
+#define MAX 100
+
+// ------------------- STACK FOR POSTFIX EVALUATION -------------------
+int stack[MAX];
+int top = -1;
+
+// Push function
+void push(int x) {
+    if (top == MAX - 1) {
+        printf("Stack Overflow!\n");
+        return;
+    }
+    stack[++top] = x;
+}
+
+// Pop function
+int pop() {
+    if (top == -1) {
+        printf("Stack Underflow!\n");
+        return -1;
+    }
+    return stack[top--];
+}
+
+// Evaluate single-digit postfix expression
+void evaluatePostfix() {
+    char expr[MAX];
+    printf("Enter a postfix expression (single-digit operands): ");
+    scanf(" %[^\n]", expr);
+
+    int i = 0;
+    while (expr[i] != '\0') {
+        char c = expr[i];
+        if (isdigit(c)) {
+            push(c - '0');  // Convert char to int
+        } else {
+            int op2 = pop();
+            int op1 = pop();
+            int res;
+
+            switch(c) {
+                case '+': res = op1 + op2; break;
+                case '-': res = op1 - op2; break;
+                case '*': res = op1 * op2; break;
+                case '/': res = op1 / op2; break;
+                case '%': res = op1 % op2; break;
+                case '^': res = (int)pow(op1, op2); break;
+                default:
+                    printf("Invalid operator %c\n", c);
+                    return;
+            }
+            push(res);
+        }
+        i++;
+    }
+
+    printf("Result of postfix expression: %d\n", pop());
+}
+
+// ------------------- TOWER OF HANOI -------------------
+void towerOfHanoi(int n, char from, char to, char aux) {
+    if (n == 1) {
+        printf("Move disk 1 from %c to %c\n", from, to);
+        return;
+    }
+    towerOfHanoi(n - 1, from, aux, to);
+    printf("Move disk %d from %c to %c\n", n, from, to);
+    towerOfHanoi(n - 1, aux, to, from);
+}
+
+// ------------------- MAIN MENU -------------------
+int main() {
+    int choice, n;
+
+    do {
+        printf("\n--- STACK APPLICATION MENU ---\n");
+        printf("1. Evaluate Postfix Expression\n");
+        printf("2. Solve Tower of Hanoi\n");
+        printf("3. Exit\n");
+        printf("Enter your choice: ");
+        scanf("%d", &choice);
+
+        switch(choice) {
+            case 1:
+                top = -1; // Reset stack
+                evaluatePostfix();
+                break;
+            case 2:
+                printf("Enter number of disks: ");
+                scanf("%d", &n);
+                printf("Tower of Hanoi solution for %d disks:\n", n);
+                towerOfHanoi(n, 'A', 'C', 'B');
+                break;
+            case 3:
+                printf("Exiting...\n");
+                break;
+            default:
+                printf("Invalid choice!\n");
+        }
+    } while(choice != 3);
+
+    return 0;
+}
+SAMPLE OUTPUT
+Example 1: Postfix Evaluation
+mathematica
+Copy code
+--- STACK APPLICATION MENU ---
+1. Evaluate Postfix Expression
+2. Solve Tower of Hanoi
+3. Exit
+Enter your choice: 1
+Enter a postfix expression (single-digit operands): 23*4+
+Result of postfix expression: 10
+(Explanation: 23 + 4 = 10)*
+
+Example 2: Tower of Hanoi
+vbnet
+Copy code
+--- STACK APPLICATION MENU ---
+1. Evaluate Postfix Expression
+2. Solve Tower of Hanoi
+3. Exit
+Enter your choice: 2
+Enter number of disks: 3
+Tower of Hanoi solution for 3 disks:
+Move disk 1 from A to C
+Move disk 2 from A to B
+Move disk 1 from C to B
+Move disk 3 from A to C
+Move disk 1 from B to A
+Move disk 2 from B to C
+Move disk 1 from A to C
+
+
+6.Develop a menu driven Program in C for the following operations on Circular QUEUE of Characters (Array Implementation of Queue with maximum size MAX) a. Insert an Element on to Circular QUEUE b. Delete an Element from Circular QUEUE c. Demonstrate Overflow and Underflow situations on Circular QUEUE d. Display the status of Circular QUEUE e. Exit Support the program with appropriate functions for each of the above operations 
+
+#include <stdio.h>
+
+#include <stdlib.h>
+#define MAX 5     // You can change MAX as needed
+
+char CQueue[MAX];
+int front = -1, rear = -1;
+
+// Function to check overflow
+int isFull() {
+    return ((front == 0 && rear == MAX - 1) || (front == rear + 1));
+}
+
+// Function to check underflow
+int isEmpty() {
+    return (front == -1);
+}
+
+// Insert element into CQueue
+void insertCQ(char item) {
+    if (isFull()) {
+        printf("\nOVERFLOW! Circular Queue is FULL.\n");
+        return;
+    }
+
+    if (front == -1) {  
+        front = rear = 0; 
+    } else {
+        rear = (rear + 1) % MAX;
+    }
+
+    CQueue[rear] = item;
+    printf("\nInserted '%c' into Circular Queue.\n", item);
+}
+
+// Delete element from CQueue
+char deleteCQ() {
+    char item;
+    if (isEmpty()) {
+        printf("\nUNDERFLOW! Circular Queue is EMPTY.\n");
+        return '\0';
+    }
+
+    item = CQueue[front];
+
+    if (front == rear) {  
+        front = rear = -1; 
+    } else {
+        front = (front + 1) % MAX;
+    }
+
+    return item;
+}
+
+// Display Circular Queue contents
+void displayCQ() {
+    int i;
+
+    if (isEmpty()) {
+        printf("\nCircular Queue is EMPTY.\n");
+        return;
+    }
+
+    printf("\nCircular Queue contents: ");
+    if (rear >= front) {
+        for (i = front; i <= rear; i++)
+            printf("%c ", CQueue[i]);
+    } else {
+        for (i = front; i < MAX; i++)
+            printf("%c ", CQueue[i]);
+
+        for (i = 0; i <= rear; i++)
+            printf("%c ", CQueue[i]);
+    }
+    printf("\n");
+}
+
+// Main Menu
+int main() {
+    int choice;
+    char item;
+
+    while (1) {
+        printf("\n===== CIRCULAR QUEUE MENU =====\n");
+        printf("1. Insert Element\n");
+        printf("2. Delete Element\n");
+        printf("3. Display Queue\n");
+        printf("4. Exit\n");
+        printf("Enter your choice: ");
+        scanf("%d", &choice);
+
+        switch (choice) {
+        case 1:
+            printf("Enter the character to insert: ");
+            scanf(" %c", &item);
+            insertCQ(item);
+            break;
+
+        case 2:
+            item = deleteCQ();
+            if (item != '\0')
+                printf("\nDeleted element: %c\n", item);
+            break;
+
+        case 3:
+            displayCQ();
+            break;
+
+        case 4:
+            printf("\nExiting Program...\n");
+            exit(0);
+
+        default:
+            printf("\nInvalid Choice! Try Again.\n");
+        }
+    }
+    return 0;
+}
+SAMPLE OUTPUT
+- CIRCULAR QUEUE MENU --------
+1. Insert Element
+2. Delete Element
+3. Display Queue
+4. Exit
+Enter your choice: 1
+Enter a character to insert: A
+Inserted 'A' into Circular Queue.
+
+-------- CIRCULAR QUEUE MENU --------
+1. Insert Element
+2. Delete Element
+3. Display Queue
+4. Exit
+Enter your choice: 1
+Enter a character to insert: B
+Inserted 'B' into Circular Queue.
+
+-------- CIRCULAR QUEUE MENU --------
+1. Insert Element
+2. Delete Element
+3. Display Queue
+4. Exit
+Enter your choice: 1
+Enter a character to insert: C
+Inserted 'C' into Circular Queue.
+
+-------- CIRCULAR QUEUE MENU --------
+Enter your choice: 3
+Circular Queue elements: A B C 
+
+-------- CIRCULAR QUEUE MENU --------
+Enter your choice: 2
+Deleted 'A' from Circular Queue.
+
+-------- CIRCULAR QUEUE MENU --------
+Enter your choice: 3
+Circular Queue elements: B C 
+
+-------- CIRCULAR QUEUE MENU --------
+Enter your choice: 1
+Enter a character to insert: D
+Inserted 'D' into Circular Queue.
+
+-------- CIRCULAR QUEUE MENU --------
+Enter your choice: 1
+Enter a character to insert: E
+Inserted 'E' into Circular Queue.
+
+-------- CIRCULAR QUEUE MENU --------
+Enter your choice: 1
+Enter a character to insert: F
+Queue Overflow! Cannot insert 'F'.
+
+-------- CIRCULAR QUEUE MENU --------
+Enter your choice: 3
+Circular Queue elements: B C D E 
+
+-------- CIRCULAR QUEUE MENU --------
+Enter your choice: 4
+Exiting program...
+7.Develop a menu driven Program in C for the following operations on Singly Linked List (SLL) of Student Data with the fields: USN, Name, Programme, Sem, PhNo a. Create a SLL of N Students Data by using front insertion. b. Display the status of SLL and count the number of nodes in it c. Perform Insertion / Deletion at End of SLL d. Perform Insertion / Deletion at Front of SLL(Demonstration of stack) e. Exit
+
+
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+
+// Structure for Student Node
+struct Student {
+    char usn[20];
+    char name[50];
+    char programme[20];
+    int sem;
+    char phno[15];
+    struct Student *next;
+};
+
+typedef struct Student NODE;
+NODE *head = NULL;
+
+// Function to create a new student node
+NODE* createNode() {
+    NODE *temp = (NODE*)malloc(sizeof(NODE));
+
+    printf("Enter USN: ");
+    scanf("%s", temp->usn);
+
+    printf("Enter Name: ");
+    scanf("%s", temp->name);
+
+    printf("Enter Programme: ");
+    scanf("%s", temp->programme);
+
+    printf("Enter Semester: ");
+    scanf("%d", &temp->sem);
+
+    printf("Enter Phone Number: ");
+    scanf("%s", temp->phno);
+
+    temp->next = NULL;
+    return temp;
+}
+
+// a. Create SLL using front insertion
+void createSLL(int n) {
+    NODE *temp;
+    int i;
+
+    for (i = 0; i < n; i++) {
+        printf("\nEnter details of Student %d:\n", i + 1);
+        temp = createNode();
+        temp->next = head;
+        head = temp;
+    }
+}
+
+// b. Display SLL + count nodes
+void displaySLL() {
+    NODE *temp;
+    int count = 0;
+
+    if (head == NULL) {
+        printf("\nSLL is EMPTY.\n");
+        return;
+    }
+
+    printf("\n--- Student List ---\n");
+    temp = head;
+
+    while (temp != NULL) {
+        printf("\nUSN       : %s", temp->usn);
+        printf("\nName      : %s", temp->name);
+        printf("\nProgramme : %s", temp->programme);
+        printf("\nSemester  : %d", temp->sem);
+        printf("\nPhone     : %s\n", temp->phno);
+
+        temp = temp->next;
+        count++;
+    }
+    printf("\nTotal number of students = %d\n", count);
+}
+
+// c1. Insert at End
+void insertEnd() {
+    NODE *temp = createNode();
+    NODE *cur;
+
+    if (head == NULL) {
+        head = temp;
+        return;
+    }
+
+    cur = head;
+    while (cur->next != NULL)
+        cur = cur->next;
+
+    cur->next = temp;
+}
+
+// c2. Delete at End
+void deleteEnd() {
+    NODE *cur = head, *prev = NULL;
+
+    if (head == NULL) {
+        printf("\nSLL is EMPTY. Cannot delete.\n");
+        return;
+    }
+
+    if (head->next == NULL) {  // only one node
+        printf("\nDeleting: %s\n", head->usn);
+        free(head);
+        head = NULL;
+        return;
+    }
+
+    while (cur->next != NULL) {
+        prev = cur;
+        cur = cur->next;
+    }
+
+    printf("\nDeleting: %s\n", cur->usn);
+    prev->next = NULL;
+    free(cur);
+}
+
+// d1. Insert at Front (Stack Push)
+void insertFront() {
+    NODE *temp = createNode();
+    temp->next = head;
+    head = temp;
+}
+
+// d2. Delete at Front (Stack Pop)
+void deleteFront() {
+    NODE *temp;
+
+    if (head == NULL) {
+        printf("\nSLL is EMPTY. Cannot delete.\n");
+        return;
+    }
+
+    temp = head;
+    printf("\nDeleting: %s\n", head->usn);
+    head = head->next;
+    free(temp);
+}
+
+// Main Menu
+int main() {
+    int choice, n;
+
+    while (1) {
+        printf("\n==== STUDENT SLL MENU ====\n");
+        printf("1. Create SLL using Front Insertion\n");
+        printf("2. Display SLL and Count Nodes\n");
+        printf("3. Insert at End\n");
+        printf("4. Delete at End\n");
+        printf("5. Insert at Front (Stack)\n");
+        printf("6. Delete at Front (Stack)\n");
+        printf("7. Exit\n");
+        printf("Enter your choice: ");
+        scanf("%d", &choice);
+
+        switch (choice) {
+        case 1:
+            printf("Enter number of students: ");
+            scanf("%d", &n);
+            createSLL(n);
+            break;
+
+        case 2:
+            displaySLL();
+            break;
+
+        case 3:
+            insertEnd();
+            break;
+
+        case 4:
+            deleteEnd();
+            break;
+
+        case 5:
+            insertFront();
+            break;
+
+        case 6:
+            deleteFront();
+            break;
+
+        case 7:
+            printf("\nExiting Program...\n");
+            exit(0);
+
+        default:
+            printf("\nInvalid Choice! Try Again.\n");
+        }
+    }
+    return 0;
+}
+SAMPLE OUTPUT
+-------- SLL MENU --------
+1. Create SLL using Front Insertion
+2. Display and Count Nodes
+3. Insert at End
+4. Delete from End
+5. Insert at Front (Stack Push)
+6. Delete from Front (Stack Pop)
+7. Exit
+Enter your choice: 1
+How many students? 2
+
+Enter Student 1 details:
+Enter USN        : 1RV21CS001
+Enter Name       : Arun
+Enter Programme  : CSE
+Enter Semester   : 3
+Enter Phone No   : 9876543210
+
+Enter Student 2 details:
+Enter USN        : 1RV21CS002
+Enter Name       : Meera
+Enter Programme  : CSE
+Enter Semester   : 3
+Enter Phone No   : 9876543211
+
+-------- SLL MENU --------
+Enter your choice: 2
+
+------ STUDENT LIST ------
+
+USN       : 1RV21CS002
+Name      : Meera
+Programme : CSE
+Semester  : 3
+Phone No  : 9876543211
+
+USN       : 1RV21CS001
+Name      : Arun
+Programme : CSE
+Semester  : 3
+Phone No  : 9876543210
+
+Total number of students = 2
+
+-------- SLL MENU --------
+Enter your choice: 3
+
+Enter details for Insertion at End:
+Enter USN        : 1RV21CS003
+Enter Name       : Kiran
+Enter Programme  : CSE
+Enter Semester   : 4
+Enter Phone No   : 9876500000
+Inserted at end.
+
+-------- SLL MENU --------
+Enter your choice: 2
+
+------ STUDENT LIST ------
+
+USN       : 1RV21CS002
+Name      : Meera
+Programme : CSE
+Semester  : 3
+Phone No  : 9876543211
+
+USN       : 1RV21CS001
+Name      : Arun
+Programme : CSE
+Semester  : 3
+Phone No  : 9876543210
+
+USN       : 1RV21CS003
+Name      : Kiran
+Programme : CSE
+Semester  : 4
+Phone No  : 9876500000
+
+Total number of students = 3
+
+-------- SLL MENU --------
+Enter your choice: 6
+Deleted USN: 1RV21CS002
+
+-------- SLL MENU --------
+Enter your choice: 4
+Deleted USN: 1RV21CS003
+
+-------- SLL MENU --------
+Enter your choice: 7
+Exiting...
+
+8.Develop a menu driven Program in C for the following operations on Doubly Linked List
+
+(DLL) of Employee Data with the fields: SSN, Name, Dept, Designation,
+
+Sal, PhNo
+
+a. Create a DLL of N Employees Data by using end insertion.
+
+b. Display the status of DLL and count the number of nodes in it
+
+c. Perform Insertion and Deletion at End of DLL
+
+d. Perform Insertion and Deletion at Front of DLL
+
+e. Demonstrate how this DLL can be used as Double Ended Queue.
+
+f. Exit
+
+
+
+
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+
+// Structure Definition
+struct Employee {
+    char ssn[15];
+    char name[30];
+    char dept[20];
+    char designation[20];
+    float sal;
+    char phno[15];
+    struct Employee *prev, *next;
+};
+
+typedef struct Employee NODE;
+
+NODE *head = NULL;   // Start of DLL
+NODE *tail = NULL;   // End of DLL
+
+// Function to create a new employee node
+NODE* createNode() {
+    NODE *temp = (NODE*)malloc(sizeof(NODE));
+
+    printf("Enter SSN: ");
+    scanf("%s", temp->ssn);
+
+    printf("Enter Name: ");
+    scanf("%s", temp->name);
+
+    printf("Enter Department: ");
+    scanf("%s", temp->dept);
+
+    printf("Enter Designation: ");
+    scanf("%s", temp->designation);
+
+    printf("Enter Salary: ");
+    scanf("%f", &temp->sal);
+
+    printf("Enter Phone Number: ");
+    scanf("%s", temp->phno);
+
+    temp->prev = temp->next = NULL;
+    return temp;
+}
+
+// a. Create DLL using End Insertion
+void createDLL(int n) {
+    for (int i = 0; i < n; i++) {
+        printf("\nEnter details of Employee %d:\n", i + 1);
+        NODE *temp = createNode();
+
+        if (head == NULL) {
+            head = tail = temp;
+        } else {
+            tail->next = temp;
+            temp->prev = tail;
+            tail = temp;
+        }
+    }
+}
+
+// b. Display DLL + count nodes
+void displayDLL() {
+    NODE *temp = head;
+    int count = 0;
+
+    if (head == NULL) {
+        printf("\nDLL is EMPTY.\n");
+        return;
+    }
+
+    printf("\n---- Employee Details (DLL) ----\n");
+    while (temp != NULL) {
+        printf("\nSSN          : %s", temp->ssn);
+        printf("\nName         : %s", temp->name);
+        printf("\nDepartment   : %s", temp->dept);
+        printf("\nDesignation  : %s", temp->designation);
+        printf("\nSalary       : %.2f", temp->sal);
+        printf("\nPhone Number : %s\n", temp->phno);
+
+        temp = temp->next;
+        count++;
+    }
+    printf("\nTotal Employees = %d\n", count);
+}
+
+// c1. Insert at End
+void insertEnd() {
+    NODE *temp = createNode();
+
+    if (head == NULL) {
+        head = tail = temp;
+        return;
+    }
+
+    tail->next = temp;
+    temp->prev = tail;
+    tail = temp;
+}
+
+// c2. Delete at End
+void deleteEnd() {
+    if (tail == NULL) {
+        printf("\nDLL is EMPTY. Cannot delete.\n");
+        return;
+    }
+
+    NODE *temp = tail;
+
+    printf("\nDeleting Employee: %s\n", temp->ssn);
+
+    if (head == tail) {  // only one node
+        head = tail = NULL;
+    } else {
+        tail = tail->prev;
+        tail->next = NULL;
+    }
+    free(temp);
+}
+
+// d1. Insert at Front
+void insertFront() {
+    NODE *temp = createNode();
+
+    if (head == NULL) {
+        head = tail = temp;
+        return;
+    }
+
+    temp->next = head;
+    head->prev = temp;
+    head = temp;
+}
+
+// d2. Delete at Front
+void deleteFront() {
+    if (head == NULL) {
+        printf("\nDLL is EMPTY. Cannot delete.\n");
+        return;
+    }
+
+    NODE *temp = head;
+    printf("\nDeleting Employee: %s\n", temp->ssn);
+
+    if (head == tail) { // only one node
+        head = tail = NULL;
+    } else {
+        head = head->next;
+        head->prev = NULL;
+    }
+    free(temp);
+}
+
+// e. Demonstrate DLL as Double Ended Queue
+void dequeueDemo() {
+    int ch;
+    printf("\n--- DOUBLE ENDED QUEUE OPERATIONS ---\n");
+    printf("1. Insert at Front\n");
+    printf("2. Insert at End\n");
+    printf("3. Delete from Front\n");
+    printf("4. Delete from End\n");
+    printf("Enter choice: ");
+    scanf("%d", &ch);
+
+    switch (ch) {
+        case 1: insertFront(); break;
+        case 2: insertEnd(); break;
+        case 3: deleteFront(); break;
+        case 4: deleteEnd(); break;
+        default: printf("\nInvalid Option!\n");
+    }
+}
+
+// Main Menu
+int main() {
+    int choice, n;
+
+    while (1) {
+        printf("\n====== EMPLOYEE DLL MENU ======\n");
+        printf("1. Create DLL using End Insertion\n");
+        printf("2. Display DLL and Count Nodes\n");
+        printf("3. Insert at End\n");
+        printf("4. Delete at End\n");
+        printf("5. Insert at Front\n");
+        printf("6. Delete at Front\n");
+        printf("7. DEQUEUE Demonstration (Front/Rear Ops)\n");
+        printf("8. Exit\n");
+        printf("Enter your choice: ");
+        scanf("%d", &choice);
+
+        switch (choice) {
+            case 1:
+                printf("Enter number of Employees: ");
+                scanf("%d", &n);
+                createDLL(n);
+                break;
+
+            case 2:
+                displayDLL();
+                break;
+
+            case 3:
+                insertEnd();
+                break;
+
+            case 4:
+                deleteEnd();
+                break;
+
+            case 5:
+                insertFront();
+                break;
+
+            case 6:
+                deleteFront();
+                break;
+
+            case 7:
+                dequeueDemo();
+                break;
+
+            case 8:
+                printf("\nExiting Program...\n");
+                exit(0);
+
+            default:
+                printf("\nInvalid Choice! Please try again.\n");
+        }
+    }
+    return 0;
+}
+SAMPLE OUTPUT
+---- DOUBLY LINKED LIST MENU ----
+1. Create DLL using End Insertion
+2. Display and Count Nodes
+3. Insert at End
+4. Delete at End
+5. Insert at Front
+6. Delete at Front
+7. Demonstrate DEQueue
+8. Exit
+Enter your choice: 1
+
+Enter number of employees: 2
+Enter SSN, Name, Dept, Designation, Salary, Phone:
+101 John HR Manager 55000 9876543210
+Enter SSN, Name, Dept, Designation, Salary, Phone:
+102 Mary IT Engineer 60000 9876543211
+
+Enter your choice: 2
+
+DLL Contents:
+SSN   Name   Dept   Desg     Salary   Phone
+101   John   HR     Manager  55000    9876543210
+102   Mary   IT     Engineer 60000    9876543211
+
+Total Employees = 2
+
+Enter your choice: 5
+Enter SSN, Name, Dept, Designation, Salary, Phone:
+100 Alice Admin Clerk 30000 9876543215
+
+Enter your choice: 2
+
+DLL Contents:
+100 Alice Admin Clerk 30000 9876543215
+101 John HR Manager 55000 9876543210
+102 Mary IT Engineer 60000 9876543211
+
+Total Employees = 3
+
+Enter your choice: 4
+Deleted: 102
+
+9.Develop a Program in C for the following operationson Singly Circular Linked List (SCLL)
+with header nodes
+a. Represent and Evaluate a Polynomial P(x,y,z) = 6x2y2z-4yz5+3x3yz+2xy5z-2xyz3 
+b. Find the sum of two polynomials POLY1(x,y,z) and POLY2(x,y,z) and store the
+result in POLYSUM(x,y,z)6x
+
+Support the program with appropriate functions for each of the above operations 
+#include <stdio.h>
+#include <stdlib.h>
+#include <math.h>
+
+struct Poly {
+    int coeff;
+    int xexp, yexp, zexp;
+    struct Poly *next;
+};
+
+typedef struct Poly NODE;
+
+NODE *header = NULL;
+
+// Create header node of SCLL
+void createHeader() {
+    header = (NODE*)malloc(sizeof(NODE));
+    header->coeff = 0;
+    header->xexp = header->yexp = header->zexp = 0;
+    header->next = header; // Circular
+}
+
+// Insert a new term at end of SCLL
+void insertTerm(int c, int x, int y, int z) {
+    NODE *temp = (NODE*)malloc(sizeof(NODE));
+    temp->coeff = c;
+    temp->xexp = x;
+    temp->yexp = y;
+    temp->zexp = z;
+
+    temp->next = header;
+
+    NODE *cur = header;
+    while (cur->next != header)
+        cur = cur->next;
+
+    cur->next = temp;
+}
+
+// Display polynomial
+void displayPoly() {
+    NODE *cur = header->next;
+
+    if (cur == header) {
+        printf("\nPolynomial is EMPTY.\n");
+        return;
+    }
+
+    printf("\nP(x, y, z) = ");
+    while (cur != header) {
+        printf("%+d x^%d y^%d z^%d  ", cur->coeff, cur->xexp, cur->yexp, cur->zexp);
+        cur = cur->next;
+    }
+    printf("\n");
+}
+
+// Evaluate polynomial for given x, y, z
+void evaluatePoly() {
+    int x, y, z;
+    double result = 0;
+
+    printf("\nEnter value of x: "); scanf("%d", &x);
+    printf("Enter value of y: "); scanf("%d", &y);
+    printf("Enter value of z: "); scanf("%d", &z);
+
+    NODE *cur = header->next;
+
+    while (cur != header) {
+        result += cur->coeff *
+                  pow(x, cur->xexp) *
+                  pow(y, cur->yexp) *
+                  pow(z, cur->zexp);
+
+        cur = cur->next;
+    }
+
+    printf("\nValue of Polynomial = %.2f\n", result);
+}
+
+// Build the polynomial P(x,y,z)
+void buildPolynomial() {
+    printf("\nBuilding Polynomial P(x,y,z) = 6x^2y^2z - 4yz^5 + 3x^3yz + 2xy^5z - 2xyz^3\n");
+
+    insertTerm(6, 2, 2, 1);
+    insertTerm(-4, 0, 1, 5);
+    insertTerm(3, 3, 1, 1);
+    insertTerm(2, 1, 5, 1);
+    insertTerm(-2, 1, 1, 3);
+
+    printf("\nPolynomial successfully created using SCLL.\n");
+}
+
+int main() {
+    int choice;
+
+    createHeader();   // Initialize header node
+
+    while (1) {
+        printf("\n===== POLYNOMIAL SCLL MENU =====\n");
+        printf("1. Create Polynomial (SCLL)\n");
+        printf("2. Display Polynomial\n");
+        printf("3. Evaluate Polynomial\n");
+        printf("4. Exit\n");
+        printf("Enter your choice: ");
+        scanf("%d", &choice);
+
+        switch (choice) {
+            case 1:
+                buildPolynomial();
+                break;
+
+            case 2:
+                displayPoly();
+                break;
+
+            case 3:
+                evaluatePoly();
+                break;
+
+            case 4:
+                printf("\nExiting Program...\n");
+                exit(0);
+
+            default:
+                printf("\nInvalid Choice! Try Again.\n");
+        }
+    }
+
+    return 0;
+}
+
+Polynomial: P(x,y,z) = 6x^2y^2z - 4yz^5 + 3x^3yz + 2xy^5z - 2xyz^3
+
+Stored Polynomial P(x,y,z):
+6x^2y^2z^1 + -4x^0y^1z^5 + 3x^3y^1z^1 + 2x^1y^5z^1 + -2x^1y^1z^3
+
+Enter x, y, z values: 1 2 3
+
+Evaluated value of P(x,y,z) = 6*(1^2)*(2^2)*(3) 
+                           - 4*(2)*(3^5)
+                           + 3*(1^3)*(2)*(3)
+                           + 2*(1)*(2^5)*(3)
+                           - 2*(1)*(2)*(3^3)
+
+Evaluated value of P = -929
+
+
+10.Develop a menu driven Program in C for the following operations on Binary Search Tree
+(BST) of Integers .
+a. Create a BST of N Integers: 6, 9, 5, 2, 8, 15, 24, 14, 7, 8, 5, 2
+b. Traverse the BST in Inorder, Preorder and Post Order
+c. Search the BST for a given element (KEY) and report the appropriate message
+d. Exit
+
+
+#include <stdio.h>
+#include <stdlib.h>
+
+struct Node {
+    int data;
+    struct Node *left, *right;
+};
+typedef struct Node NODE;
+
+// Function to create new node
+NODE* createNode(int data) {
+    NODE *newNode = (NODE*)malloc(sizeof(NODE));
+    newNode->data = data;
+    newNode->left = newNode->right = NULL;
+    return newNode;
+}
+
+// Insert into BST (duplicates allowed: stored LEFT side)
+NODE* insertBST(NODE *root, int data) {
+    if (root == NULL)
+        return createNode(data);
+
+    if (data <= root->data)       // duplicates go to LEFT
+        root->left = insertBST(root->left, data);
+    else
+        root->right = insertBST(root->right, data);
+
+    return root;
+}
+
+// a. Create BST from given list
+NODE* createBST() {
+    int arr[] = {6, 9, 5, 2, 8, 15, 24, 14, 7, 8, 5, 2};
+    int n = sizeof(arr) / sizeof(arr[0]);
+
+    NODE *root = NULL;
+    for (int i = 0; i < n; i++)
+        root = insertBST(root, arr[i]);
+
+    printf("\nBST created successfully from given elements.\n");
+    return root;
+}
+
+// b1. Inorder (L, Root, R)
+void inorder(NODE *root) {
+    if (root == NULL) return;
+    inorder(root->left);
+    printf("%d ", root->data);
+    inorder(root->right);
+}
+
+// b2. Preorder (Root, L, R)
+void preorder(NODE *root) {
+    if (root == NULL) return;
+    printf("%d ", root->data);
+    preorder(root->left);
+    preorder(root->right);
+}
+
+// b3. Postorder (L, R, Root)
+void postorder(NODE *root) {
+    if (root == NULL) return;
+    postorder(root->left);
+    postorder(root->right);
+    printf("%d ", root->data);
+}
+
+// c. Search an element in BST
+void searchBST(NODE *root, int key) {
+    NODE *cur = root;
+
+    while (cur != NULL) {
+        if (cur->data == key) {
+            printf("\nKEY %d found in BST.\n", key);
+            return;
+        }
+        else if (key < cur->data)
+            cur = cur->left;
+        else
+            cur = cur->right;
+    }
+
+    printf("\nKEY %d NOT found in BST.\n", key);
+}
+
+// Main Menu
+int main() {
+    int choice, key;
+    NODE *root = NULL;
+
+    while (1) {
+        printf("\n====== BINARY SEARCH TREE MENU ======\n");
+        printf("1. Create BST from given elements\n");
+        printf("2. Inorder Traversal\n");
+        printf("3. Preorder Traversal\n");
+        printf("4. Postorder Traversal\n");
+        printf("5. Search for an Element\n");
+        printf("6. Exit\n");
+        printf("Enter your choice: ");
+        scanf("%d", &choice);
+
+        switch (choice) {
+            case 1:
+                root = createBST();
+                break;
+
+            case 2:
+                if (root == NULL)
+                    printf("\nBST is EMPTY. Create it first.\n");
+                else {
+                    printf("\nInorder: ");
+                    inorder(root);
+                    printf("\n");
+                }
+                break;
+
+            case 3:
+                if (root == NULL)
+                    printf("\nBST is EMPTY. Create it first.\n");
+                else {
+                    printf("\nPreorder: ");
+                    preorder(root);
+                    printf("\n");
+                }
+                break;
+
+            case 4:
+                if (root == NULL)
+                    printf("\nBST is EMPTY. Create it first.\n");
+                else {
+                    printf("\nPostorder: ");
+                    postorder(root);
+                    printf("\n");
+                }
+                break;
+
+            case 5:
+                if (root == NULL)
+                    printf("\nBST is EMPTY. Create it first.\n");
+                else {
+                    printf("\nEnter KEY to search: ");
+                    scanf("%d", &key);
+                    searchBST(root, key);
+                }
+                break;
+
+            case 6:
+                printf("\nExiting Program...\n");
+                exit(0);
+
+            default:
+                printf("\nInvalid Choice! Try Again.\n");
+        }
+    }
+    return 0;
+}
+
+SAMPLE OUTPUT
+--- BINARY SEARCH TREE MENU ---
+1. Create BST from given numbers
+2. Inorder Traversal
+3. Preorder Traversal
+4. Postorder Traversal
+5. Search for a Key
+6. Exit
+Enter your choice: 1
+BST created successfully!
+
+Enter your choice: 2
+Inorder Traversal: 2 5 6 7 8 9 14 15 24 
+
+Enter your choice: 3
+Preorder Traversal: 6 5 2 9 8 7 15 14 24 
+
+Enter your choice: 4
+Postorder Traversal: 2 5 7 8 14 24 15 9 6 
+
+Enter your choice: 5
+Enter key to search: 8
+Key 8 FOUND in BST
+
+Enter your choice: 5
+Enter key to search: 20
+Key 20 NOT found in BST
+
+Enter your choice: 6
+Exiting...
+
+11.Develop a Program in C for the following operations on Graph(G) of Cities
+a. Create a Graph of N cities using Adjacency Matrix.
+b. Print all the nodes reachable from a given starting node in a digraph using DFS/BFS
+method.
+#include <stdio.h>
+#include <stdlib.h>
+
+int graph[20][20];    // adjacency matrix
+int visited[20];      // visited array for DFS/BFS
+int queue[20];        // queue for BFS
+int front = 0, rear = -1;
+
+// a. Create graph of N cities using adjacency matrix
+void createGraph(int n) {
+    printf("\nEnter adjacency matrix (0 or 1):\n");
+    for (int i = 1; i <= n; i++) {
+        for (int j = 1; j <= n; j++) {
+            printf("Is there a path from City %d to City %d (0/1)? ", i, j);
+            scanf("%d", &graph[i][j]);
+        }
+    }
+}
+
+// DFS function
+void DFS(int start, int n) {
+    visited[start] = 1;
+    printf("%d ", start);
+
+    for (int i = 1; i <= n; i++) {
+        if (graph[start][i] == 1 && visited[i] == 0)
+            DFS(i, n);
+    }
+}
+
+// BFS function
+void BFS(int start, int n) {
+    for (int i = 1; i <= n; i++)
+        visited[i] = 0;
+
+    front = 0; rear = -1;
+    queue[++rear] = start;
+    visited[start] = 1;
+
+    printf("%d ", start);
+
+    while (front <= rear) {
+        int node = queue[front++];
+
+        for (int i = 1; i <= n; i++) {
+            if (graph[node][i] == 1 && visited[i] == 0) {
+                queue[++rear] = i;
+                visited[i] = 1;
+                printf("%d ", i);
+            }
+        }
+    }
+}
+
+int main() {
+    int n, choice, start;
+
+    printf("Enter number of cities (max 20): ");
+    scanf("%d", &n);
+
+    while (1) {
+        printf("\n=========== GRAPH MENU ===========\n");
+        printf("1. Create Graph (Adjacency Matrix)\n");
+        printf("2. DFS Traversal (Reachable Cities)\n");
+        printf("3. BFS Traversal (Reachable Cities)\n");
+        printf("4. Exit\n");
+        printf("Enter your choice: ");
+        scanf("%d", &choice);
+
+        switch (choice) {
+        case 1:
+            createGraph(n);
+            break;
+
+        case 2:
+            for (int i = 1; i <= n; i++)
+                visited[i] = 0;
+
+            printf("\nEnter starting city: ");
+            scanf("%d", &start);
+
+            printf("Cities reachable from %d using DFS: ", start);
+            DFS(start, n);
+            printf("\n");
+            break;
+
+        case 3:
+            printf("\nEnter starting city: ");
+            scanf("%d", &start);
+
+            printf("Cities reachable from %d using BFS: ", start);
+            BFS(start, n);
+            printf("\n");
+            break;
+
+        case 4:
+            printf("Exiting...\n");
+            exit(0);
+
+        default:
+            printf("Invalid choice! Enter again.\n");
+        }
+    }
+
+    return 0;
+}
+
+SAMPLE OUTPUT
+Enter number of cities (nodes): 5
+
+Enter adjacency matrix (5 x 5):
+0 1 1 0 0
+0 0 1 1 0
+0 0 0 1 1
+0 0 0 0 1
+0 0 0 0 0
+
+Enter starting node: 0
+Adjacency Matrix used:
+
+From/To	0	1	2	3	4
+0	0	1	1	0	0
+1	0	0	1	1	0
+2	0	0	0	1	1
+3	0	0	0	0	1
+4	0	0	0	0	0
+
+From node 0, reachable nodes are:
+
+BFS: Level order → 0, 1, 2, 3, 4
+
+DFS: Depth-first → 0, 1, 2, 3, 4
+
+12.Given a File of N employee records with a set K of Keys (4-digit) which uniquely determine
+the records in file F. Assume that file F is maintained in memory by a Hash Table (HT) of m
+memory locations with L as the set of memory addresses (2-digit) of locations in HT. Let the
+keys in K and addresses in L are Integers. Develop a Program in C that uses Hash function H:
+K →L as H(K)=K mod m (remainder method), and implement hashingtechnique to map a given key K to 
+the address space L. Resolve the collision (if any) using linear probing.
+
+#include <stdio.h>
+#include <stdlib.h>
+
+#define MAX 50     // maximum table size
+
+int hashTable[MAX];
+
+// Function to initialize the hash table with -1 (empty)
+void initialize(int m) {
+    for (int i = 0; i < m; i++)
+        hashTable[i] = -1;
+}
+
+// Hash function : H(K) = K mod m
+int hashFunction(int key, int m) {
+    return key % m;
+}
+
+// Insert key into hash table using linear probing
+void insert(int key, int m) {
+    int index = hashFunction(key, m);
+
+    int i = 0;
+    while (i < m) {
+        int newIndex = (index + i) % m;
+        if (hashTable[newIndex] == -1) {
+            hashTable[newIndex] = key;
+            printf("Inserted key %d at index %d\n", key, newIndex);
+            return;
+        }
+        i++;
+    }
+    printf("Hash Table Overflow! Could not insert key %d\n", key);
+}
+
+// Search for a key using linear probing
+void search(int key, int m) {
+    int index = hashFunction(key, m);
+
+    int i = 0;
+    while (i < m) {
+        int newIndex = (index + i) % m;
+        if (hashTable[newIndex] == key) {
+            printf("Key %d found at index %d\n", key, newIndex);
+            return;
+        } else if (hashTable[newIndex] == -1) {
+            printf("Key %d not found in hash table\n", key);
+            return;
+        }
+        i++;
+    }
+    printf("Key %d not found in hash table\n", key);
+}
+
+// Display hash table
+void display(int m) {
+    printf("\nHash Table Contents:\n");
+    for (int i = 0; i < m; i++) {
+        printf("HT[%d] = %d\n", i, hashTable[i]);
+    }
+}
+
+int main() {
+    int m, choice, key;
+
+    printf("Enter size of Hash Table (m): ");
+    scanf("%d", &m);
+
+    if (m > MAX) {
+        printf("Size exceeds maximum limit!\n");
+        return 0;
+    }
+
+    initialize(m);
+
+    while (1) {
+        printf("\n---- HASH TABLE MENU ----\n");
+        printf("1. Insert Key\n");
+        printf("2. Search Key\n");
+        printf("3. Display Hash Table\n");
+        printf("4. Exit\n");
+        printf("Enter your choice: ");
+        scanf("%d", &choice);
+
+        switch (choice) {
+            case 1:
+                printf("Enter 4-digit key to insert: ");
+                scanf("%d", &key);
+                insert(key, m);
+                break;
+
+            case 2:
+                printf("Enter key to search: ");
+                scanf("%d", &key);
+                search(key, m);
+                break;
+
+            case 3:
+                display(m);
+                break;
+
+            case 4:
+                printf("Exiting program...\n");
+                exit(0);
+
+            default:
+                printf("Invalid Choice! Try again.\n");
+        }
+    }
+
+    return 0;
+}
+
+SAMPLE OUTPUT
+Enter hash table size (m): 10
+Enter number of employee records: 5
+
+Enter 4-digit key: 1234
+Enter employee name: John
+Inserted Key 1234 at location 4
+
+Enter 4-digit key: 9876
+Enter employee name: Ravi
+Inserted Key 9876 at location 6
+
+Enter 4-digit key: 2234
+Enter employee name: Meera
+Inserted Key 2234 at location 4 (collision → linear probe → stored at 5)
+
+Enter 4-digit key: 3456
+Enter employee name: Arun
+Inserted Key 3456 at location 6 (collision → probe → 7)
+
+Enter 4-digit key: 1111
+Enter employee name: Paul
+Inserted Key 1111 at location 1
+Hash Table Display
+yaml
+Copy code
+--- HASH TABLE CONTENTS ---
+0 : ---
+1 : 1111 (Paul)
+2 : ---
+3 : ---
+4 : 1234 (John)
+5 : 2234 (Meera)
+6 : 9876 (Ravi)
+7 : 3456 (Arun)
+8 : ---
+9 : ---

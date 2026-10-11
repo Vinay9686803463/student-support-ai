@@ -141,8 +141,19 @@ CANONICAL_SUBJECTS = [
     ("BPHYS202", "Physics for CSE Stream", 2, "CSE", "2022", "Core", 4),
     ("BPWSK206", "Professional Writing Skills in English", 2, "CSE", "2022", "Core", 1),
     ("BYOK359", "Yoga", 3, "CSE", "2022", "Core", 1),
+    ("BYOK459", "Yoga", 4, "CSE", "2022", "Core", 1),
     ("BSCK307", "Social Connect and Responsibility", 3, "CSE", "2022", "Core", 1),
+    ("BCS301", "Mathematics for Computer Science", 3, "CSE", "2022", "Core", 4),
+    ("BCS302", "Digital Design & Computer Organization", 3, "CSE", "2022", "Core", 4),
     ("BCS303", "Operating Systems", 3, "CSE", "2022", "Core", 4),
+    ("BCS304", "Data Structures and Applications", 3, "CSE", "2022", "Core", 4),
+    ("BCSL305", "Data Structures Lab", 3, "CSE", "2022", "Core", 1),
+    ("BCS306B", "Object Oriented Programming with C++", 3, "CSE", "2022", "Core", 4),
+    ("BCS402", "Microcontrollers", 4, "CSE", "2022", "Core", 4),
+    ("BCS403", "Database Management Systems", 4, "CSE", "2022", "Core", 4),
+    ("BBOC407", "Biology for Computer Engineers", 4, "CSE", "2022", "Core", 4),
+    ("BCSL404", "Analysis & Design of Algorithms Lab", 4, "CSE", "2022", "Core", 1),
+    ("BCS405A", "Discrete Mathematical Structures", 4, "CSE", "2022", "Core", 4),
 ]
 
 # Study-material PDFs committed under knowledge_base/<CODE>/.
@@ -387,6 +398,12 @@ STUDY_MATERIALS = {
         ("24.pdf", 2),
         ("25.pdf", 3),
     ],
+    "BYOK459": [
+        ("23.69.docx", 1),
+        ("ACKNOWLEDGEMENT of yoga.docx", 2),
+        ("Certificate yoga.docx", 3),
+        ("CONTENTS.docx", 4),
+    ],
     # Truncated requests resolved to exact on-disk names:
     # 'Aditya College of Engineering and Technology.docx' and
     # 'VISVESVARAYA TECHNOLOGICAL UNIVERSITY.docx'.
@@ -401,6 +418,26 @@ STUDY_MATERIALS = {
         ("Vinay SCR Report.docx", 8),
         ("VISVESVARAYA TECHNOLOGICAL UNIVERSITY.docx", 9),
     ],
+    "BCS302": [
+        ("Module 1.pdf", 1),
+        ("Module 2.pdf", 2),
+        ("Module 3.pdf", 3),
+        ("Module 4.pdf", 4),
+        ("Module 5.pdf", 5),
+        ("WhatsApp Image 2026-01-12 at 6.08.23 PM (1).jpeg", 0),
+        ("WhatsApp Image 2026-01-12 at 6.08.23 PM.jpeg", 0),
+        ("Image to PDF 20260130 18.49.43.pdf", 0),
+        ("Image to PDF 20260129 19.04.03.pdf", 0),
+        ("Image to PDF 20260129 13.10.29.pdf", 0),
+        ("Image to PDF 20260129 08.23.33.pdf", 0),
+        ("Image to PDF 20251028 18.53.47.pdf", 0),
+        ("DDCO.pdf", 0),
+        ("DDCO previous year question papers.pdf", 0),
+        ("DDCO lab manual-1.pdf", 0),
+        ("DDCO Lab Manual - TCE.pdf", 0),
+        ("DDCO Assignment.pdf", 0),
+        ("Assignent Questions.docx", 0),
+    ],
     "BCS303": [
         ("Module 1.pdf", 1),
         ("Module 2.pdf", 2),
@@ -414,6 +451,118 @@ STUDY_MATERIALS = {
         ("OS Module 1 assignment.pdf", 0),
         ("OS Previous year question papers.pdf", 0),
         ("VTU exam Question Paper with Solution of BCS303 Operating Systems Jan-2024-Novy Jacob.pdf", 0),
+    ],
+    "BCS301": [
+        ("Assignment 1.pdf", 1),
+        ("BCS301-module-5-written.pdf", 2),
+        ("Mathematics Handbook for 3rd Semester 22 Sheme.pdf", 3),
+        ("Maths assignment 1.pdf", 4),
+        ("Maths assignment Module 3,4,5.pdf", 5),
+        ("Maths previous year question papers.pdf", 6),
+        ("Model Question Paperes.pdf", 7),
+        ("WhatsApp Image 2026-01-31 at 11.59.29 AM.jpeg", 8),
+        ("WhatsApp Image 2026-01-31 at 11.59.30 AM (1).jpeg", 9),
+        ("WhatsApp Image 2026-01-31 at 11.59.30 AM (2).jpeg", 10),
+        ("WhatsApp Image 2026-01-31 at 11.59.30 AM.jpeg", 11),
+        ("WhatsApp Image 2026-01-31 at 11.59.31 AM.jpeg", 12),
+    ],
+    # NOTE: 'Module 2.pdf' is absent from Downloads (verified, including
+    # subfolders); near-matches 'MODULE-2.pdf' / 'MODULE-2 (1).pdf' are
+    # byte-identical scanned-image duplicates of each other with no
+    # extractable text, so neither was substituted. Module 2 renders
+    # the existing empty placeholder until the genuine file is provided.
+    "BCS304": [
+        ("Module 1.pdf", 1),
+        ("Module 3.pdf", 3),
+        ("Module 4.pdf", 4),
+        ("Module 5 (1).pdf", 5),
+        ("Assignment Questions.pdf", 0),
+        ("BCS304-module-1-pdf.pdf", 0),
+        ("BCS304-module-2-pdf.pdf", 0),
+        ("code raiders.txt", 0),
+        ("DocScanner Oct 29, 2025 10-15.pdf", 0),
+        ("ds_ist_important question.docx", 0),
+        ("dsssssModule 1 .docx", 0),
+        ("Kaagaz_20251105_222929727466.pdf", 0),
+        ("MODULE-2.docx", 0),
+    ],
+    "BCSL305": [
+        ("DS Lab Manual.txt", 1),
+    ],
+    # Same 10 files as ingest_bcs306b_resources.py ENTRIES (module-wise
+    # PDFs under moduleN/, extras under additional/). Both writers use
+    # identical (filename, module_number) slots, so the boot ensure and
+    # the ingest script idempotently skip each other's rows.
+    "BCS306B": [
+        ("Module 1.pdf", 1),
+        ("Module 2.pdf", 2),
+        ("Module 3.pdf", 3),
+        ("BCS306B-module-4-pdf.pdf", 4),
+        ("BCS306B-module-5-pdf.pdf", 5),
+        ("C ++ previous year question papers.pdf", 0),
+        ("C++ Assignent Module 4 and 5.pdf", 0),
+        ("C++ Assignment  Module 1.pdf", 0),
+        ("C++ Assignment Module 2.pdf", 0),
+        ("cpplab.pdf", 0),
+    ],
+    "BCS402": [
+        ("BCS402-module-1-pdf.pdf", 1),
+        ("BCS402-module-2-pdf.pdf", 2),
+        ("03_BCS402-Module-3.pdf", 3),
+        ("BCS402 Module 4.pdf", 4),
+        ("BCS402 Module 5.pdf", 5),
+        ("ACET(Document).pdf", 0),
+        ("BCS402-module-3.docx", 0),
+        ("MC Previous year question papers.pdf", 0),
+        ("Micro controller Assignment 1.pdf", 0),
+        ("MODULE 2.docx", 0),
+        ("module1.pdf", 0),
+        ("Question Bank _BCS402 .docx", 0),
+    ],
+    "BCS403": [
+        ("Module-1 (1).pdf", 1),
+        ("DBMS MODULE 2.pdf", 2),
+        ("dbms-module-3-notes (1) (1) (2).pdf", 3),
+        ("Module 4 Full Notes (1) (1).pdf", 4),
+        ("module5 notes (1) (1) (2).pdf", 5),
+        ("Ass-2 DBMS (2).pdf", 0),
+        ("Assignment 1.pdf", 0),
+        ("DBMS Assignement question.docx", 0),
+        ("DBMS previous year question papers.pdf", 0),
+        ("DBMS SOLVED.pdf", 0),
+        ("Dbms_M1 notes.docx", 0),
+        ("New dbms manual.docx", 0),
+        ("VTU exam Question Paper with Solution of BCS403 Database Management Systems Sep-2024-Shivani Gupta.pdf", 0),
+    ],
+    "BBOC407": [
+        ("Biology Module 1 by mcr.pdf", 1),
+        ("M-2 Appl Biomol by MCR.pdf", 2),
+        ("M 3 - Bio.pdf", 3),
+        ("M 4 - Bio.pdf", 4),
+        ("BBOC407-Module-5-pdf.pdf", 5),
+        ("Textbook Biology for Engineers.pdf", 0),
+        ("NATURE - BIO INSPIRED M-4.pdf", 0),
+        ("Module- 2.pdf", 0),
+        ("BIOLOGY QUESTION BANK.pdf", 0),
+        ("Biology previous year question papers.pdf", 0),
+        ("Biology Model Paper Solution.pdf", 0),
+        ("Biology for Engineers.pdf", 0),
+        ("BIOENGINEERING DESIGN M-3.pdf", 0),
+        ("BBOC407.pdf", 0),
+    ],
+    # Lab manual: single unnumbered file card under Study Material
+    # (BCSL404 is in the unnumbered-file list in app.py:subject_detail,
+    # same as the BCSL305 lab) - no Module sections, no Additional
+    # Resources section.
+    "BCSL404": [
+        ("ADA_LAB_MANUAL_BCSL404_2026.pdf", 1),
+    ],
+    "BCS405A": [
+        ("DMS(BCS405A) MQPsolved #telegram(@vtu23).pdf", 0),
+        ("DMS assignment 2.pdf", 0),
+        ("Discrete Maths Previous year question papers.pdf", 0),
+        ("BCS305A DMS Assignment No 1_260419_232801.pdf", 0),
+        ("2csiotsyll-67-70.pdf", 0),
     ],
 }
 
@@ -473,12 +622,68 @@ STUDY_MATERIAL_SUBDIRS = {
         5: "module5",
         0: "additional",
     },
+    "BCS302": {
+        1: "module1",
+        2: "module2",
+        3: "module3",
+        4: "module4",
+        5: "module5",
+        0: "additional",
+    },
     "BCS303": {
         1: "module1",
         2: "module2",
         3: "module3",
         4: "module4",
         5: "module5",
+        0: "additional",
+    },
+    "BCS304": {
+        1: "module1",
+        3: "module3",
+        4: "module4",
+        5: "module5",
+        0: "additional",
+    },
+    "BCSL305": {
+        1: "module1",
+    },
+    "BCSL404": {
+        1: "module1",
+    },
+    "BCS306B": {
+        1: "module1",
+        2: "module2",
+        3: "module3",
+        4: "module4",
+        5: "module5",
+        0: "additional",
+    },
+    "BCS402": {
+        1: "module1",
+        2: "module2",
+        3: "module3",
+        4: "module4",
+        5: "module5",
+        0: "additional",
+    },
+    "BCS403": {
+        1: "module1",
+        2: "module2",
+        3: "module3",
+        4: "module4",
+        5: "module5",
+        0: "additional",
+    },
+    "BBOC407": {
+        1: "module1",
+        2: "module2",
+        3: "module3",
+        4: "module4",
+        5: "module5",
+        0: "additional",
+    },
+    "BCS405A": {
         0: "additional",
     },
 }
@@ -532,12 +737,68 @@ STUDY_MATERIAL_TITLES = {
         5: "Module 5",
         0: "Additional Resources",
     },
+    "BCS302": {
+        1: "Module 1",
+        2: "Module 2",
+        3: "Module 3",
+        4: "Module 4",
+        5: "Module 5",
+        0: "Additional Resources",
+    },
     "BCS303": {
         1: "Module 1",
         2: "Module 2",
         3: "Module 3",
         4: "Module 4",
         5: "Module 5",
+        0: "Additional Resources",
+    },
+    "BCS304": {
+        1: "Module 1",
+        3: "Module 3",
+        4: "Module 4",
+        5: "Module 5",
+        0: "Additional Resources",
+    },
+    "BCSL305": {
+        1: "Module 1",
+    },
+    "BCSL404": {
+        1: "Module 1",
+    },
+    "BCS306B": {
+        1: "Module 1",
+        2: "Module 2",
+        3: "Module 3",
+        4: "Module 4",
+        5: "Module 5",
+        0: "Additional Resources",
+    },
+    "BCS402": {
+        1: "Module 1",
+        2: "Module 2",
+        3: "Module 3",
+        4: "Module 4",
+        5: "Module 5",
+        0: "Additional Resources",
+    },
+    "BCS403": {
+        1: "Module 1",
+        2: "Module 2",
+        3: "Module 3",
+        4: "Module 4",
+        5: "Module 5",
+        0: "Additional Resources",
+    },
+    "BBOC407": {
+        1: "Module 1",
+        2: "Module 2",
+        3: "Module 3",
+        4: "Module 4",
+        5: "Module 5",
+        0: "Additional Resources",
+    },
+    "BCS405A": {
         0: "Additional Resources",
     },
 }
@@ -633,8 +894,9 @@ def ensure_study_materials():
     (filename, module_number) slot (title=filename stem, status
     'uploaded') unless a row for that triple already exists. PDFs
     record their
-    pypdf page count; Office documents (.docx/.doc/.ppt/.pptx/.xlsx,
-    served as downloads by the existing document viewer) record 0. Existing
+    pypdf page count; Office documents and images (.docx/.doc/.ppt/
+    .pptx/.xlsx/.jpg/.jpeg/.png/.gif/.webp, served by the existing
+    document viewer) record 0. Existing
     rows are never updated or deleted. Files missing from disk are
     logged and skipped. Never raises: failures roll back and log.
     """
@@ -692,14 +954,22 @@ def ensure_study_materials():
                 if pages < 1:
                     print(f"  ! empty PDF, skipping: {_safename(filename)}")
                     continue
-            elif suffix in (".docx", ".doc", ".ppt", ".pptx", ".xlsx"):
-                # Office documents reuse the existing document viewer
-                # (/knowledge/document/<id> serves them as downloads;
-                # .xlsx falls back to application/octet-stream there);
-                # page counts do not apply, so 0 hides the label.
+            elif suffix in (".docx", ".doc", ".ppt", ".pptx", ".xlsx",
+                            ".jpg", ".jpeg", ".png", ".gif", ".webp",
+                            ".txt"):
+                # Office documents, images and plain text reuse the
+                # existing document viewer (/knowledge/document/<id>
+                # serves downloads, and images/text inline); page counts
+                # do not apply, so 0 hides the label.
                 if pdf_path.stat().st_size < 1:
                     print(f"  ! empty document, skipping: {_safename(filename)}")
                     continue
+                if suffix == ".txt":
+                    try:
+                        pdf_path.read_text(encoding="utf-8")
+                    except (UnicodeDecodeError, OSError) as error:
+                        print(f"  ! unreadable text, skipping {_safename(filename)}: {_safename(error)}")
+                        continue
                 pages = 0
             else:
                 print(f"  ! unsupported type, skipping: {_safename(filename)}")

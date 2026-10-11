@@ -5,6 +5,7 @@ from functools import wraps
 from dotenv import load_dotenv  # pyright: ignore[reportMissingImports]
 from flask import (
     Flask,
+    Response,
     abort,
     flash,
     g,
@@ -31,6 +32,7 @@ from utils.database import (
     init_database
 )
 from utils.bootstrap import ensure_study_content
+from utils.bootstrap_latex import ensure_latex_materials
 
 
 load_dotenv()
@@ -48,6 +50,11 @@ init_database(app)
 
 with app.app_context():
     ensure_study_content()
+    # BCSL456D supplement (see utils/bootstrap_latex.py): registers the
+    # LATEX manual until its entries can be folded into
+    # utils/bootstrap.py (currently file-locked). Same SELECT-only +
+    # INSERT-missing contract; never touches other subjects.
+    ensure_latex_materials(db)
 
 
 # Subjects stored in the database that are NOT active academic subjects
@@ -680,13 +687,19 @@ def api_chat():
     if len(message) > 2000:
         return {"reply": "Please keep questions under 2000 characters."}, 400
 
-    # Try RAG first: retrieve VTU knowledge and answer grounded in it.
+    # Try RAG first: retrieve study-material knowledge, grounded in it.
     # Subject-aware: the chat client may pass subject_code/module_number
     # (e.g. from a subject page). Both are optional; when absent the
-    # search spans all subjects. Values are validated against the
-    # subjects table so one subject can never pull another's chunks
-    # via a forged code.
+    # search spans all subjects, with an automatic hint from common
+    # abbreviations (ADA, DBMS, ...) and subject-name words. Values are
+    # validated against the subjects table so one subject can never
+    # pull another's chunks via a forged code. Mode selects the
+    # retrieval budget: "fast" (quick, concise) or "detailed".
     try:
+        from utils.rag_ai import normalize_mode
+        from utils.rag import detect_query_subject
+
+        mode = normalize_mode(data.get("mode"))
         requested_code = (data.get("subject_code") or "").strip().upper()
         requested_module = data.get("module_number")
         rag_subject = None
@@ -702,6 +715,19 @@ def api_chat():
             except Exception:
                 db.session.rollback()
                 rag_subject = None
+        if not rag_subject:
+            try:
+                rows = db.session.execute(
+                    text("SELECT subject_code, subject_name FROM subjects")
+                ).mappings().all()
+                hint = detect_query_subject(
+                    message,
+                    {r["subject_code"]: r["subject_name"] for r in rows},
+                )
+                if hint:
+                    rag_subject = hint
+            except Exception:
+                db.session.rollback()
         try:
             if requested_module is not None and str(requested_module).strip() != "":
                 rag_module = int(requested_module)
@@ -714,7 +740,7 @@ def api_chat():
             question=message,
             subject_code=rag_subject,
             module_number=rag_module,
-            limit=5,
+            mode=mode,
         )
 
         answer = rag_result.get("answer", "")
@@ -732,6 +758,9 @@ def api_chat():
                 "used_rag": used_rag,
                 "used_ai": used_ai,
                 "engine": engine,
+                "mode": rag_result.get("mode", mode),
+                "latency_ms": rag_result.get("latency_ms", 0),
+                "cached": rag_result.get("cached", False),
             }
 
     except Exception as rag_error:
@@ -821,6 +850,94 @@ def api_chat():
         engine = "offline"
 
     return {"reply": reply, "answer": reply, "sources": [], "used_rag": False, "used_ai": False, "engine": engine}
+
+
+# =========================================================
+# CHAT API - STREAMING (Server-Sent Events)
+# =========================================================
+
+@app.route("/api/chat/stream", methods=["POST"])
+@login_required
+def api_chat_stream():
+
+    import json as _json
+
+    from utils.rag_ai import normalize_mode, stream_answer
+
+    user = get_current_user()
+
+    data = request.get_json(silent=True) or {}
+    message = (data.get("message") or "").strip()
+
+    if not message:
+        def _empty():
+            yield 'event: error\ndata: {"error": "Please type a question first."}\n\n'
+        return Response(_empty(), mimetype="text/event-stream")
+
+    if len(message) > 2000:
+        def _too_long():
+            yield 'event: error\ndata: {"error": "Please keep questions under 2000 characters."}\n\n'
+        return Response(_too_long(), mimetype="text/event-stream")
+
+    mode = normalize_mode(data.get("mode"))
+
+    requested_code = (data.get("subject_code") or "").strip().upper()
+    requested_module = data.get("module_number")
+    rag_subject = None
+    rag_module = None
+    if requested_code:
+        try:
+            exists = db.session.execute(
+                text("SELECT 1 FROM subjects WHERE subject_code = :c"),
+                {"c": requested_code},
+            ).first()
+            if exists:
+                rag_subject = requested_code
+        except Exception:
+            db.session.rollback()
+    if not rag_subject:
+        try:
+            from utils.rag import detect_query_subject
+            rows = db.session.execute(
+                text("SELECT subject_code, subject_name FROM subjects")
+            ).mappings().all()
+            hint = detect_query_subject(
+                message,
+                {r["subject_code"]: r["subject_name"] for r in rows},
+            )
+            if hint:
+                rag_subject = hint
+        except Exception:
+            db.session.rollback()
+    try:
+        if requested_module is not None and str(requested_module).strip() != "":
+            rag_module = int(requested_module)
+            if rag_module not in (1, 2, 3, 4, 5):
+                rag_module = None
+    except (TypeError, ValueError):
+        rag_module = None
+
+    def _generate():
+        try:
+            for item in stream_answer(
+                question=message,
+                subject_code=rag_subject,
+                module_number=rag_module,
+                mode=mode,
+            ):
+                yield f"event: {item['event']}\ndata: {_json.dumps(item['data'])}\n\n"
+        except GeneratorExit:
+            # Client pressed stop / disconnected: just end the stream.
+            return
+        except Exception as stream_error:
+            print("CHAT STREAM ERROR:", stream_error)
+            yield 'event: error\ndata: {"error": "Streaming failed. Please retry."}\n\n'
+
+    headers = {
+        "Cache-Control": "no-cache",
+        "X-Accel-Buffering": "no",
+    }
+    return Response(_generate(), mimetype="text/event-stream", headers=headers)
 
 
 # =========================================================
@@ -1238,6 +1355,44 @@ def subject_detail(subject_code):
             }
         )
 
+    # BCS405A exception: this subject shows its files directly under
+    # Study Material with no Additional Resources section. Rows are
+    # deduplicated by filename (Study Material row wins), so a duplicate
+    # module-0 row can never produce a second card or section.
+    # Scoped to this code only; other subjects are untouched.
+    if subject.get("code") == "BCS405A":
+        seen_filenames = set()
+        unique_rows = []
+        for doc_row in sorted(doc_rows, key=lambda r: (r["module_number"] != 1, r["id"])):
+            filename = doc_row["original_filename"] or doc_row["title"]
+            if filename in seen_filenames:
+                continue
+            seen_filenames.add(filename)
+            unique_rows.append(doc_row)
+        doc_rows = unique_rows
+        docs_by_module = {}
+        for doc_row in doc_rows:
+            try:
+                module_number = int(doc_row["module_number"])
+            except (TypeError, ValueError):
+                continue
+            filename = (
+                doc_row["original_filename"]
+                or doc_row["title"]
+                or f"Module {module_number}.pdf"
+            )
+            docs_by_module.setdefault(module_number, []).append(
+                {
+                    "id": doc_row["id"],
+                    "filename": filename,
+                    "title": doc_row["title"],
+                    "module_title": doc_row["module_title"],
+                    "page_count": doc_row["page_count"],
+                    "status": doc_row["status"]
+                }
+            )
+        additional_resources = []
+
     # Map existing unit cards to module numbers for topics/titles.
     # NOTE: units are used ONLY to enrich titles/topics of modules that
     # actually have PDFs. Modules without documents are never created,
@@ -1255,6 +1410,12 @@ def subject_detail(subject_code):
     # uploads without code changes). Same dict shape as module documents.
     additional_resources = docs_by_module.get(0, [])
 
+    # BCS405A never shows an Additional Resources section: its files live
+    # directly under Study Material (deduplicated above). Scoped override;
+    # other subjects are untouched.
+    if subject.get("code") == "BCS405A":
+        additional_resources = []
+
     # Reusable Module 1-5 slot pattern: any subject with at least one
     # study file shows slots 1-5 in order; slots without a PDF render as
     # empty placeholders ready for later uploads. Subjects with zero
@@ -1266,14 +1427,15 @@ def subject_detail(subject_code):
         module_numbers = []
 
     # Unnumbered file collections (BCEDK103, BENGK106, BMATS101,
-    # BMATS201, BKSKK107, BSFHK158, BIDTK258, BYOK359, BSCK307):
+    # BMATS201, BKSKK107, BSFHK158, BIDTK258, BYOK359, BSCK307, BCS301,
+    # BUHK408, BCSL305, BYOK459, BCS405A, BCSL404, BCSL456D):
     # their files (primers, question papers, solved papers, question
     # banks, formula sheets, textbooks, scanned notes, ...) are not
     # module-wise, so each document
     # renders as its own unnumbered file card in the existing View File
     # format, never as Module 1-5.
     # Scoped to these codes only; other subjects are untouched.
-    if subject.get("code") in ("BCEDK103", "BENGK106", "BMATS101", "BMATS201", "BKSKK107", "BSFHK158", "BIDTK258", "BYOK359", "BSCK307") and doc_rows:
+    if subject.get("code") in ("BCEDK103", "BENGK106", "BMATS101", "BMATS201", "BKSKK107", "BSFHK158", "BIDTK258", "BYOK359", "BSCK307", "BCS301", "BUHK408", "BCSL305", "BYOK459", "BCS405A", "BCSL404", "BCSL456D") and doc_rows:
         for doc_row in doc_rows:
             doc_filename = (
                 doc_row["original_filename"]
@@ -1532,10 +1694,30 @@ def knowledge_document(document_id):
             "application/vnd.openxmlformats-officedocument."
             "presentationml.presentation"
         ),
+        ".xlsx": (
+            "application/vnd.openxmlformats-officedocument."
+            "spreadsheetml.sheet"
+        ),
+        ".jpg": "image/jpeg",
+        ".jpeg": "image/jpeg",
+        ".png": "image/png",
+        ".gif": "image/gif",
+        ".webp": "image/webp",
+        ".txt": "text/plain",
     }
 
-    # Office formats cannot render reliably in the browser, so they are
-    # served as downloads instead of inline documents.
+    # Images and plain text render natively in the browser, so they are
+    # served inline (the existing "View File" link opens them in a new
+    # tab). Office formats cannot render reliably in the browser, so
+    # they are served as downloads instead of inline documents.
+    if suffix in (".jpg", ".jpeg", ".png", ".gif", ".webp", ".txt"):
+        return send_file(
+            resolved,
+            mimetype=mime_types.get(suffix, "application/octet-stream"),
+            as_attachment=False,
+            download_name=row["original_filename"] or resolved.name
+        )
+
     return send_file(
         resolved,
         mimetype=mime_types.get(suffix, "application/octet-stream"),
@@ -2061,6 +2243,19 @@ def internal_error(error):
         code=500,
         message="Something went wrong on our side. Please try again."
     ), 500
+
+
+# =========================================================
+# REQUEST TEARDOWN (release the thread-local retrieval connection)
+# =========================================================
+
+@app.teardown_appcontext
+def close_retrieval_connection(_error):
+    try:
+        from utils.db_conn import close_conn
+        close_conn()
+    except Exception:
+        pass
 
 
 # =========================================================

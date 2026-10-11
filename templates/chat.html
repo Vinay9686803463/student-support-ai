@@ -142,6 +142,26 @@
                     ● Online
                 </span>
 
+                <div class="mode-toggle" role="group" aria-label="Answer mode">
+                    <button
+                        type="button"
+                        data-mode="fast"
+                        onclick="setMode('fast')"
+                        title="Fast Answer: quick, concise"
+                    >
+                        ⚡ Fast
+                    </button>
+                    <button
+                        type="button"
+                        data-mode="detailed"
+                        onclick="setMode('detailed')"
+                        title="Detailed Answer: step-by-step"
+                    >
+                        🔍 Detailed
+                    </button>
+                </div>
+                <span class="mode-label" id="modeLabel">Fast Answer</span>
+
                 <button
                     type="button"
                     class="new-chat-btn"
@@ -184,19 +204,19 @@
 
                     <div class="suggestions">
 
-                        <button type="button" onclick="useSuggestion(this)">
+                        <button type="button" onclick="askQuestion(this.innerText)">
                             Explain DBMS normalization
                         </button>
 
-                        <button type="button" onclick="useSuggestion(this)">
+                        <button type="button" onclick="askQuestion(this.innerText)">
                             What is a computer network?
                         </button>
 
-                        <button type="button" onclick="useSuggestion(this)">
+                        <button type="button" onclick="askQuestion(this.innerText)">
                             Explain process scheduling
                         </button>
 
-                        <button type="button" onclick="useSuggestion(this)">
+                        <button type="button" onclick="askQuestion(this.innerText)">
                             Give important exam questions
                         </button>
 
@@ -226,6 +246,17 @@
                         id="sendButton"
                     >
                         ➤
+                    </button>
+
+                    <button
+                        type="button"
+                        class="send-button stop-button"
+                        onclick="stopGeneration()"
+                        id="stopButton"
+                        style="display: none;"
+                        title="Stop generating"
+                    >
+                        ⏹
                     </button>
 
                 </div>

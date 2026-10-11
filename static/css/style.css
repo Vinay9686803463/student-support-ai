@@ -5292,3 +5292,86 @@ textarea:focus-visible {
         justify-content: center;
     }
 }
+/* ============================================================
+   AI ASSISTANT - Fast/Detailed modes, streaming, actions
+   ============================================================ */
+
+.mode-toggle {
+    display: inline-flex;
+    gap: 0.25rem;
+    padding: 0.2rem;
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    background: var(--card);
+}
+
+.mode-toggle button {
+    border: 0;
+    border-radius: 999px;
+    padding: 0.35rem 0.8rem;
+    font-size: 0.85rem;
+    background: transparent;
+    color: var(--muted);
+    cursor: pointer;
+}
+
+.mode-toggle button.active {
+    background: var(--primary);
+    color: #ffffff;
+}
+
+.mode-label {
+    font-size: 0.8rem;
+    color: var(--muted);
+}
+
+.stop-button {
+    background: #dc2626;
+}
+
+.message-actions {
+    display: flex;
+    gap: 0.4rem;
+    margin-top: 0.5rem;
+}
+
+.mini-btn {
+    border: 1px solid var(--border);
+    background: var(--card);
+    color: var(--text);
+    border-radius: 8px;
+    padding: 0.25rem 0.6rem;
+    font-size: 0.8rem;
+    cursor: pointer;
+}
+
+.mini-btn:hover {
+    border-color: var(--primary);
+}
+
+.ask-ai-btn {
+    display: inline-block;
+    margin-top: 0.4rem;
+    font-size: 0.82rem;
+    color: var(--primary);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 0.25rem 0.6rem;
+    background: var(--card);
+}
+
+.ask-ai-btn:hover {
+    border-color: var(--primary);
+}
+
+@media (max-width: 650px) {
+
+    .mode-toggle button {
+        padding: 0.3rem 0.55rem;
+        font-size: 0.78rem;
+    }
+
+    .mode-label {
+        display: none;
+    }
+}

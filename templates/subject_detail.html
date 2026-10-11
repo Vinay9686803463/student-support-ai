@@ -274,9 +274,11 @@
                 <div>
                     <h2>Study Material</h2>
 
+                    {% if subject.code != 'BCS405A' %}
                     <p>
                         Official module PDFs from the knowledge base.
                     </p>
+                    {% endif %}
                 </div>
 
             </div>
@@ -500,7 +502,7 @@
                 </a>
 
 
-                <a href="/chat"
+                <a href="/chat?subject={{ subject.code }}"
                    class="subject-tool-card">
 
                     <div class="subject-tool-icon">

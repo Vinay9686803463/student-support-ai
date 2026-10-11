@@ -1,8 +1,11 @@
 """Text extraction for legacy Office formats (stdlib + olefile only).
 
 - .docx  -> ZIP container, word/document.xml (stdlib zipfile/xml)
-- .doc   -> OLE streams + carved embedded OOXML packages
-- .ppt   -> OLE 'PowerPoint Document' stream, text atoms + runs
+- .doc   -> OLE streams + carved embedded OOXML packages (needs olefile)
+- .ppt   -> OLE 'PowerPoint Document' stream, text atoms + runs (needs olefile)
+- .pptx  -> ZIP container, ppt/slides + notes text runs (stdlib only)
+- .xlsx  -> ZIP container, shared strings + sheet cells (stdlib only)
+- .txt   -> plain text read (stdlib only)
 
 Returns plain text with paragraph breaks preserved (best effort).
 """
@@ -13,7 +16,13 @@ import zipfile
 import xml.etree.ElementTree as ET
 from pathlib import Path
 
-import olefile
+
+def _require_olefile():
+    try:
+        import olefile
+    except Exception:
+        olefile = None
+    return olefile
 
 
 def _clean(text):
@@ -134,6 +143,9 @@ def extract_doc(path):
     Reads the WordDocument stream plus the Data stream (which holds
     drawing/textbox content such as form templates).
     """
+    olefile = _require_olefile()
+    if olefile is None:
+        return ""
     path = str(path)
     if not olefile.isOleFile(path):
         return ""
@@ -175,6 +187,9 @@ def extract_ppt(path):
     Scans the 'PowerPoint Document' stream for TextCharsAtom (0x0FA0,
     UTF-16LE payload) and TextBytesAtom (0x0FA1, 8-bit payload) records.
     """
+    olefile = _require_olefile()
+    if olefile is None:
+        return ""
     path = str(path)
     if not olefile.isOleFile(path):
         return ""
@@ -313,6 +328,64 @@ def _ppt_walk(data, texts):
             pos += 8 + rec_len
 
 
+def _ooxml_texts(zf, pattern, text_tag):
+    """Collect text runs from OOXML slide/sheet XML parts (stdlib only)."""
+    parts = []
+    try:
+        names = zf.namelist()
+    except Exception:
+        return parts
+    import re as _re
+    for name in sorted(n for n in names if _re.match(pattern, n)):
+        try:
+            xml_bytes = zf.read(name)
+        except Exception:
+            continue
+        try:
+            root = ET.fromstring(xml_bytes)
+        except Exception:
+            continue
+        for node in root.iter():
+            if node.tag.endswith(text_tag) and (node.text or "").strip():
+                parts.append(node.text.strip())
+    return parts
+
+
+def extract_pptx(path):
+    """Text from modern .pptx (slides + notes) without extra dependencies."""
+    path = str(path)
+    try:
+        with zipfile.ZipFile(path) as zf:
+            slides = _ooxml_texts(zf, r"ppt/slides/slide\d+\.xml$", "}t")
+            notes = _ooxml_texts(zf, r"ppt/notesSlides/notesSlide\d+\.xml$", "}t")
+    except Exception:
+        return ""
+    return _clean("\n".join(slides + notes))
+
+
+def extract_xlsx(path):
+    """Text from modern .xlsx (shared strings + inline sheet cells)."""
+    path = str(path)
+    try:
+        with zipfile.ZipFile(path) as zf:
+            strings = _ooxml_texts(zf, r"xl/sharedStrings\.xml$", "}t")
+            cells = _ooxml_texts(zf, r"xl/worksheets/sheet\d+\.xml$", "}v")
+    except Exception:
+        return ""
+    # Inline strings inside sheets use <is><t>; shared strings cover the rest.
+    return _clean("\n".join(strings + cells))
+
+
+def extract_txt(path):
+    """Plain-text read with encoding fallback (never raises)."""
+    for encoding in ("utf-8", "utf-8-sig", "latin-1"):
+        try:
+            return _clean(Path(path).read_text(encoding=encoding))
+        except Exception:
+            continue
+    return ""
+
+
 def extract_office_text(path):
     """Dispatch by extension; returns plain text (possibly empty)."""
     suffix = Path(path).suffix.lower()
@@ -320,6 +393,12 @@ def extract_office_text(path):
         return extract_docx(path)
     if suffix == ".doc":
         return extract_doc(path)
-    if suffix in (".ppt", ".pptx", ".pps"):
+    if suffix in (".ppt", ".pps"):
         return extract_ppt(path)
+    if suffix == ".pptx":
+        return extract_pptx(path)
+    if suffix == ".xlsx":
+        return extract_xlsx(path)
+    if suffix == ".txt":
+        return extract_txt(path)
     return ""
