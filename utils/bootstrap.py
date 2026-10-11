@@ -139,6 +139,10 @@ CANONICAL_SUBJECTS = [
     ("BIDTK258", "Innovation and Design Thinking", 2, "CSE", "2022", "Core", 1),
     ("BPOPS203", "Principles of Programming Using C", 2, "CSE", "2022", "Core", 4),
     ("BPHYS202", "Physics for CSE Stream", 2, "CSE", "2022", "Core", 4),
+    ("BPWSK206", "Professional Writing Skills in English", 2, "CSE", "2022", "Core", 1),
+    ("BYOK359", "Yoga", 3, "CSE", "2022", "Core", 1),
+    ("BSCK307", "Social Connect and Responsibility", 3, "CSE", "2022", "Core", 1),
+    ("BCS303", "Operating Systems", 3, "CSE", "2022", "Core", 4),
 ]
 
 # Study-material PDFs committed under knowledge_base/<CODE>/.
@@ -352,6 +356,65 @@ STUDY_MATERIALS = {
         ("SOLVED NUMERICALS -JAN 2023 - CSE-STREAM.pdf", 0),
         ("SOLVED NUMERICALS -JULY 2023 - CSE-STREAM.pdf", 0),
     ],
+    # Abbreviated requests resolved to exact on-disk names:
+    # '86d4f7c9-42e6-45a5-9b8d-9ca6ea259ea0.pdf' and
+    # 'II Semester English Model QP- Solved TIE.pdf' ("TIE", not "ITE").
+    "BPWSK206": [
+        ("MODULE -1 II SEM.docx", 1),
+        ("MODULE 2 II SEM.docx", 2),
+        ("MODULE 3 EVEN.docx", 3),
+        ("MODULE 4 ENEN.docx", 4),
+        ("MODULE 5 EVEN.docx", 5),
+        ("21EGH28set2.pdf", 0),
+        ("86d4f7c9-42e6-45a5-9b8d-9ca6ea259ea0.pdf", 0),
+        ("2025-07-30 19-26-55.pdf", 0),
+        ("Adobe Scan 31 Jul 2025.pdf", 0),
+        ("CBCS Scheme.pdf", 0),
+        ("II Semester English Model QP- Solved TIE.pdf", 0),
+        ("Make-Up Exam.pdf", 0),
+        ("Profe Mod 1 MCQ @vtudeveloper.in (1).pdf", 0),
+        ("Profe Mod 2 MCQ @vtudeveloper.in.pdf", 0),
+        ("Profe Mod 3 MCQ @vtudeveloper.in (1).pdf", 0),
+        ("Profe Mod 4 MCQ @vtudeveloper.in (3).pdf", 0),
+        ("PWS Eng M-1 Question Bank.pdf", 0),
+        ("PWS Eng M-2 Question Bank.pdf", 0),
+        ("PWS Eng M-3 Question Bank.pdf", 0),
+        ("PWS Eng M-4 Question Bank.pdf", 0),
+        ("PWS Eng M-5 Question Bank.pdf", 0),
+    ],
+    "BYOK359": [
+        ("23.pdf", 1),
+        ("24.pdf", 2),
+        ("25.pdf", 3),
+    ],
+    # Truncated requests resolved to exact on-disk names:
+    # 'Aditya College of Engineering and Technology.docx' and
+    # 'VISVESVARAYA TECHNOLOGICAL UNIVERSITY.docx'.
+    "BSCK307": [
+        ("ACKNOWLEDGEMENT.docx", 1),
+        ("Aditya College of Engineering and Technology.docx", 2),
+        ("Document1.docx", 3),
+        ("SCR Certificate.pdf", 4),
+        ("SCR Final Report 2025-26.docx", 5),
+        ("SCR Final Report 2025-26.pdf", 6),
+        ("Vinay SCR Report (1).docx", 7),
+        ("Vinay SCR Report.docx", 8),
+        ("VISVESVARAYA TECHNOLOGICAL UNIVERSITY.docx", 9),
+    ],
+    "BCS303": [
+        ("Module 1.pdf", 1),
+        ("Module 2.pdf", 2),
+        ("Module 3.pdf", 3),
+        ("Module 4.pdf", 4),
+        ("Module 5 (1).pdf", 5),
+        ("Assignment Module 2.pdf", 0),
+        ("BCS303_OS_Module_1_Notes.pdf", 0),
+        ("Operating System Concepts (9th Ed) - Gagne, Silberschatz, and Galvin.pdf", 0),
+        ("OS Assignment Module 3,4,5.pdf", 0),
+        ("OS Module 1 assignment.pdf", 0),
+        ("OS Previous year question papers.pdf", 0),
+        ("VTU exam Question Paper with Solution of BCS303 Operating Systems Jan-2024-Novy Jacob.pdf", 0),
+    ],
 }
 
 # Per-code storage subdirectories and module titles for STUDY_MATERIALS
@@ -402,6 +465,22 @@ STUDY_MATERIAL_SUBDIRS = {
         5: "module5",
         0: "additional",
     },
+    "BPWSK206": {
+        1: "module1",
+        2: "module2",
+        3: "module3",
+        4: "module4",
+        5: "module5",
+        0: "additional",
+    },
+    "BCS303": {
+        1: "module1",
+        2: "module2",
+        3: "module3",
+        4: "module4",
+        5: "module5",
+        0: "additional",
+    },
 }
 # {code: {module_number: module_title}}
 STUDY_MATERIAL_TITLES = {
@@ -438,6 +517,22 @@ STUDY_MATERIAL_TITLES = {
         0: "Additional Resources",
     },
     "BPHYS202": {
+        1: "Module 1",
+        2: "Module 2",
+        3: "Module 3",
+        4: "Module 4",
+        5: "Module 5",
+        0: "Additional Resources",
+    },
+    "BPWSK206": {
+        1: "Module 1",
+        2: "Module 2",
+        3: "Module 3",
+        4: "Module 4",
+        5: "Module 5",
+        0: "Additional Resources",
+    },
+    "BCS303": {
         1: "Module 1",
         2: "Module 2",
         3: "Module 3",
