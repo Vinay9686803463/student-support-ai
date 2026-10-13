@@ -123,6 +123,57 @@ def test_normalize_mode():
     assert normalize_mode(None) == "detailed"
 
 
+def test_classify_provider_error():
+    from utils import rag_ai as _rag_ai_mod
+    from utils.rag_ai import _classify_provider_error, get_last_provider_error
+    _rag_ai_mod._LAST_PROVIDER_ERROR.update({"code": None, "at": None, "model": None})
+    assert _classify_provider_error(Exception("API key not valid")) == "auth_invalid"
+    assert _classify_provider_error(Exception("quota exhausted")) == "quota_exceeded"
+    assert _classify_provider_error(Exception("429 rate limit")) == "rate_limited"
+    assert _classify_provider_error(Exception("request timed out")) == "timeout"
+    assert _classify_provider_error(Exception("DNS resolve failed")) == "network"
+    assert _classify_provider_error(Exception("weird")) == "unknown"
+    assert get_last_provider_error()["code"] is None
+
+
+def test_answer_kind_no_provider_stubbed():
+    from unittest.mock import patch
+    from utils import rag_ai
+    from utils.answer_cache import invalidate_all
+    invalidate_all()
+    fake_results = [
+        {"document_id": 1, "subject_code": "BCS403", "module_number": 1,
+         "page_number": 2, "chunk_number": 1, "content": "Normal forms reduce redundancy.",
+         "similarity": 0.5, "filename": "Module 1.pdf", "doc_title": "Module 1.pdf"},
+    ]
+    with patch.object(rag_ai, "gemini_available", return_value=False), \
+         patch("utils.rag_ai.prepare_rag_request",
+               return_value={"question": "q", "results": fake_results, "prompt": "P"}), \
+         patch("utils.rag_ai.current_kb_version", return_value="test-v1"), \
+         patch("utils.rag_ai.active_provider", return_value=None), \
+         patch("utils.rag_ai.get_last_provider_error", return_value={}):
+        out = rag_ai.answer_with_rag("Explain normalization", mode="fast")
+    assert out["used_ai"] is False
+    assert out["answer_kind"] == "fallback_excerpts"
+    assert out["error_code"] == "provider_not_configured"
+    assert "Direct AI answering is currently unavailable" in out["answer"]
+
+
+def test_coverage_rerank_prefers_topical_passage():
+    from utils.rag import coverage_score, distinctive_terms, rerank_by_coverage
+    q = "Explain database normalization with 1NF 2NF and 3NF"
+    terms = distinctive_terms(q)
+    assert "normalization" in terms
+    off_topic = {"content": "DBMS classifications and three-schema architecture utilities."}
+    on_topic = {"content": "First normal form 1NF eliminates repeating groups; "
+                           "normalization removes redundancy."}
+    assert coverage_score(on_topic["content"], terms) > coverage_score(off_topic["content"], terms)
+    ranked = rerank_by_coverage([off_topic, on_topic], q)
+    assert ranked[0] is on_topic
+    # Never drops results.
+    assert len(rerank_by_coverage([off_topic, on_topic], "???")) == 2
+
+
 def test_mode_limits_differ():
     from utils.rag import MODE_LIMITS
     assert MODE_LIMITS["fast"] < MODE_LIMITS["detailed"]
@@ -161,3 +212,13 @@ def test_answer_with_rag_grounded():
     assert out["used_rag"] is True
     assert out["mode"] == "fast"
     assert "latency_ms" in out
+
+
+@needs_db
+def test_normalization_retrieval_is_topical():
+    from utils.rag import prepare_rag_request
+    data = prepare_rag_request(
+        "Explain database normalization with 1NF 2NF and 3NF", limit=5)
+    assert data["results"], "expected indexed normalization content"
+    top = " ".join(r["content"] for r in data["results"][:2]).lower()
+    assert any(k in top for k in ("normal", "functional depend", "1nf", "2nf", "3nf")), top[:200]

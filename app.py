@@ -1,8 +1,18 @@
 import os
 import re
 from functools import wraps
+from pathlib import Path
 
 from dotenv import load_dotenv  # pyright: ignore[reportMissingImports]
+
+# Load the project .env by absolute path BEFORE anything else imports.
+# Plain load_dotenv() resolves from the current working directory, so a
+# server started from another folder silently misses every key (this
+# produced "provider_not_configured" with a perfectly good .env file).
+# override=False keeps real environment variables authoritative.
+_PROJECT_ROOT = Path(__file__).resolve().parent
+load_dotenv(_PROJECT_ROOT / ".env", override=False)
+
 from flask import (
     Flask,
     Response,
@@ -35,7 +45,7 @@ from utils.bootstrap import ensure_study_content
 from utils.bootstrap_latex import ensure_latex_materials
 
 
-load_dotenv()
+load_dotenv(_PROJECT_ROOT / ".env", override=False)
 
 
 app = Flask(__name__)
@@ -55,6 +65,94 @@ with app.app_context():
     # utils/bootstrap.py (currently file-locked). Same SELECT-only +
     # INSERT-missing contract; never touches other subjects.
     ensure_latex_materials(db)
+
+
+def provider_diagnostics():
+    """Safe startup/self-check report: booleans and names only.
+
+    Never includes key material. Used by the boot banner and the
+    /api/provider-status route so a misconfigured server is obvious
+    instead of surfacing as a generic chat fallback.
+    """
+    report = {
+        "env_file": str(_PROJECT_ROOT / ".env"),
+        "env_file_exists": (_PROJECT_ROOT / ".env").is_file(),
+        "provider": None,
+        "model": None,
+        "key_present": False,
+        "sdk_ok": False,
+        "ready": False,
+    }
+    try:
+        from utils.rag_ai import active_provider, configured_provider
+        from utils import openai_provider as _openai
+
+        provider = active_provider()
+        report["provider"] = configured_provider()
+        # Probe SDK + key independently of activation so the banner
+        # tells the truth even when nothing is usable.
+        report["key_present"] = _openai.openai_key_present()
+        try:
+            import openai  # noqa: F401
+            report["sdk_ok"] = True
+        except Exception:
+            report["sdk_ok"] = False
+        if provider == "openai":
+            report["model"] = _openai.configured_model()
+            report["ready"] = bool(
+                report["key_present"] and report["sdk_ok"])
+        elif provider == "gemini":
+            from utils.rag_ai import gemini_available, _gemini_key
+
+            key = _gemini_key() or ""
+            report["key_present"] = bool(key)
+            import re as _re
+            report["key_format_ok"] = bool(
+                _re.fullmatch(r"AIza[0-9A-Za-z_-]{30,}", key))
+            try:
+                import google.generativeai  # noqa: F401
+                report["sdk_ok"] = True
+            except Exception:
+                report["sdk_ok"] = False
+            report["ready"] = bool(
+                report["key_present"] and report["sdk_ok"])
+        elif provider == "ollama":
+            from utils import ollama_provider as _ollama
+
+            report["model"] = _ollama.configured_model()
+            report["key_present"] = True  # local inference needs no key
+            report["sdk_ok"] = True  # stdlib HTTP client, no dependency
+            report["ollama_url"] = _ollama.configured_url()
+            report["ready"] = _ollama.ollama_available()
+    except Exception as diag_error:
+        report["error"] = str(diag_error)[:120]
+    return report
+
+
+print()
+print("=" * 60)
+print("STUDENT SUPPORT AI - PROVIDER CHECK")
+print("=" * 60)
+_diag = provider_diagnostics()
+print(f"  .env file      : {_diag['env_file_exists']} ({_diag['env_file']})")
+print(f"  provider       : {_diag['provider']}")
+print(f"  model          : {_diag['model']}")
+print(f"  key present    : {_diag['key_present']}")
+print(f"  SDK installed  : {_diag['sdk_ok']}")
+print(f"  ready          : {_diag['ready']}")
+if _diag.get("key_format_ok") is False and _diag["provider"] == "gemini":
+    print("  ! GOOGLE_GENERATIVE_AI_API_KEY has a wrong format:")
+    print("    - AI Studio keys start with AIza; re-paste the key.")
+if not _diag["ready"]:
+    print("  ! AI generation will fall back until this is fixed:")
+    if not _diag["env_file_exists"]:
+        print("    - .env not found next to app.py; create it there.")
+    if not _diag["key_present"]:
+        print("    - set GOOGLE_GENERATIVE_AI_API_KEY in .env (AI_PROVIDER=gemini default).")
+    if not _diag["sdk_ok"]:
+        print("    - run: venv\\Scripts\\pip.exe install -r requirements.txt")
+print("=" * 60)
+print()
 
 
 # Subjects stored in the database that are NOT active academic subjects
@@ -750,13 +848,21 @@ def api_chat():
 
         # If RAG produced an answer, use it.
         if answer:
-            engine = "gemini" if used_ai else "study bank"
+            provider = rag_result.get("provider")
+            if used_ai:
+                engine = {"openai": "openai", "gemini": "gemini"}.get(
+                    provider, "openai")
+            else:
+                engine = "study bank"
             return {
                 "reply": answer,
                 "answer": answer,
                 "sources": sources,
                 "used_rag": used_rag,
                 "used_ai": used_ai,
+                "provider": provider,
+                "answer_kind": rag_result.get("answer_kind", "fallback_excerpts"),
+                "error_code": rag_result.get("error_code"),
                 "engine": engine,
                 "mode": rag_result.get("mode", mode),
                 "latency_ms": rag_result.get("latency_ms", 0),
@@ -831,6 +937,8 @@ def api_chat():
 
     # Fallback: offline study-assistant engine.
     try:
+        from utils.rag_ai import active_provider
+
         reply = generate_answer(
             message,
             {
@@ -840,7 +948,8 @@ def api_chat():
                 "resources": resources_ctx
             }
         )
-        engine = "gemini" if gemini_available() else "offline"
+        provider = active_provider()
+        engine = {"openai": "openai", "gemini": "gemini"}.get(provider, "offline")
     except Exception as error:
         print("CHAT GENERATE ERROR:", error)
         reply = (
@@ -2256,6 +2365,16 @@ def close_retrieval_connection(_error):
         close_conn()
     except Exception:
         pass
+
+
+# =========================================================
+# PROVIDER STATUS (safe self-check: booleans and names only)
+# =========================================================
+
+@app.route("/api/provider-status")
+@login_required
+def api_provider_status():
+    return provider_diagnostics()
 
 
 # =========================================================

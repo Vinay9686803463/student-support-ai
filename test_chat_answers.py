@@ -15,6 +15,7 @@ Run: venv\\Scripts\\python.exe -m pytest test_chat_answers.py -q
 (DB-free: retrieval, model, cache-version and clock are stubbed.)
 """
 
+import os
 import unittest
 from unittest.mock import patch
 
@@ -74,6 +75,7 @@ class AnswerPipelineTest(unittest.TestCase):
                  "Complexity O(log n). [Source 1]")
         with patch.object(rag_ai, "prepare_rag_request",
                           return_value=_rag_data()), \
+             patch.dict("os.environ", {"AI_PROVIDER": "gemini"}), \
              patch.object(rag_ai, "gemini_available", return_value=True), \
              patch.object(rag_ai, "_call_gemini", return_value=synth):
             out = rag_ai.answer_with_rag(question=QUESTION + " q1")
@@ -155,6 +157,7 @@ class AnswerPipelineTest(unittest.TestCase):
         pieces = ["## Binary", " Search\n", "O(log n)"]
         with patch.object(rag_ai, "prepare_rag_request",
                           return_value=_rag_data()), \
+             patch.dict("os.environ", {"AI_PROVIDER": "gemini"}), \
              patch.object(rag_ai, "gemini_available", return_value=True), \
              patch.object(rag_ai, "_stream_gemini", return_value=iter(pieces)):
             events = list(rag_ai.stream_answer(question=QUESTION + " q6"))
@@ -162,6 +165,54 @@ class AnswerPipelineTest(unittest.TestCase):
                        if e["event"] == "token")
         self.assertEqual(body, "".join(pieces))
         self.assertTrue(events[-1]["data"]["used_ai"])
+
+    def test_stream_model_failure_records_error(self):
+        from utils.rag_ai import get_last_provider_error
+        with patch.object(rag_ai, "prepare_rag_request",
+                          return_value=_rag_data()), \
+             patch.dict("os.environ", {"AI_PROVIDER": "gemini"}), \
+             patch.object(rag_ai, "gemini_available", return_value=True), \
+             patch.object(rag_ai, "_stream_gemini",
+                          side_effect=RuntimeError("429 rate limit exceeded")):
+            events = list(rag_ai.stream_answer(question=QUESTION + " q7"))
+        done = events[-1]["data"]
+        self.assertFalse(done["used_ai"])
+        self.assertEqual(done["error_code"], "rate_limited")
+        self.assertEqual(get_last_provider_error()["code"], "rate_limited")
+        body = "".join(e["data"]["text"] for e in events
+                       if e["event"] == "token")
+        self.assertIn("Direct AI answering is currently unavailable", body)
+
+
+class ModelCandidatesTest(unittest.TestCase):
+    def test_defaults_when_unset(self):
+        with patch.dict("os.environ", {}, clear=False):
+            os.environ.pop("GEMINI_MODELS", None)
+            from utils.rag_ai import _model_candidates
+            self.assertEqual(_model_candidates(),
+                             ("gemini-3.8-flash", "gemini-3.5-flash"))
+
+    def test_override_parsed(self):
+        with patch.dict("os.environ",
+                        {"GEMINI_MODELS": " gemini-3.5-flash ,, gemini-3.8-flash "}):
+            from utils.rag_ai import _model_candidates
+            self.assertEqual(_model_candidates(),
+                             ("gemini-3.5-flash", "gemini-3.8-flash"))
+
+    def test_blank_override_falls_back(self):
+        with patch.dict("os.environ", {"GEMINI_MODELS": " , "}):
+            from utils.rag_ai import _model_candidates
+            self.assertEqual(_model_candidates(),
+                             ("gemini-3.8-flash", "gemini-3.5-flash"))
+
+    def test_classify_retired_and_overloaded_models(self):
+        from utils.rag_ai import _classify_provider_error
+        self.assertEqual(
+            _classify_provider_error(Exception("404 model not found")), "model_not_found")
+        self.assertEqual(
+            _classify_provider_error(Exception("504 Bad Gateway")), "server_error")
+        self.assertEqual(
+            _classify_provider_error(Exception("504 Deadline expired")), "timeout")
 
 
 class ApiChatRouteTest(unittest.TestCase):

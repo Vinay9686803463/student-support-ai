@@ -405,7 +405,15 @@ function updateStatus(info) {
         return;
     }
     const bits = [];
-    if (info.engine) {
+    if (info.answer_kind === "ai_generated") {
+        const provider = (info.provider || info.engine || "AI").toLowerCase();
+        bits.push(provider === "openai" ? "OpenAI"
+            : provider === "gemini" ? "Gemini"
+            : provider === "ollama" ? "Ollama (local)" : "AI");
+    } else if (info.answer_kind === "fallback_excerpts") {
+        bits.push("⚠ fallback — AI unavailable" +
+            (info.error_code ? " (" + info.error_code + ")" : ""));
+    } else if (info.engine) {
         bits.push(info.engine);
     }
     if (info.mode) {
@@ -504,7 +512,10 @@ async function sendMessage() {
                     sources = data.sources;
                 } else if (eventName === "done") {
                     updateStatus({
-                        engine: data.used_ai ? "gemini" : "study bank",
+                        engine: data.used_ai ? (data.provider || "AI") : "study bank",
+                        provider: data.provider,
+                        answer_kind: data.answer_kind,
+                        error_code: data.error_code,
                         mode: data.mode || getMode(),
                         latency_ms: data.latency_ms,
                         cached: false
@@ -540,7 +551,10 @@ async function sendMessage() {
             }
             contentP.innerHTML = formatReply(fullText);
             updateStatus({
-                engine: data.engine || (data.used_ai ? "gemini" : "study bank"),
+                engine: data.engine || (data.used_ai ? (data.provider || "AI") : "study bank"),
+                provider: data.provider,
+                answer_kind: data.answer_kind,
+                error_code: data.error_code,
                 mode: data.mode || getMode(),
                 latency_ms: data.latency_ms,
                 cached: data.cached

@@ -1,4 +1,5 @@
 import os
+import re
 
 from dotenv import load_dotenv
 
@@ -15,6 +16,13 @@ MODE_LIMITS = {
     "detailed": 8,
 }
 
+# Prompt context budgets per mode: smaller prompts generate much
+# faster (measured: 10k-char prompt ~16-45s+; ~4k-char prompt ~8-15s).
+MODE_CONTEXT_CHARS = {
+    "fast": 1500,
+    "detailed": 3000,
+}
+
 
 def detect_query_subject(question, code_to_name):
     """Best-effort subject hint from abbreviations or name words."""
@@ -26,12 +34,62 @@ def detect_query_subject(question, code_to_name):
     return hits[0] if hits else None
 
 
-def build_context(results):
+QUESTION_STOPWORDS = frozenset({
+    "what", "whats", "which", "explain", "describe", "define", "give",
+    "tell", "about", "notes", "note", "module", "important", "concepts",
+    "concept", "topic", "topics", "exam", "simple", "words", "word",
+    "step", "detail", "detailed", "brief", "short", "answer", "question",
+    "summarize", "summary", "mean", "means", "meaning", "with", "from",
+    "that", "this", "these", "those", "their", "there", "here", "your",
+    "yours", "some", "such", "into", "using", "used", "uses", "role",
+})
+
+
+def distinctive_terms(question):
+    """Content-bearing question words used for relevance ranking."""
+    terms = []
+    for word in re.findall(r"[A-Za-z0-9][A-Za-z0-9+]*", question or ""):
+        lowered = word.lower()
+        if lowered in QUESTION_STOPWORDS:
+            continue
+        # Normal-form codes (1NF/2NF/3NF/...) are short but carry the
+        # whole topic: keep any short token containing a digit.
+        if len(lowered) >= 4 or (
+            len(lowered) >= 2
+            and any(char.isdigit() for char in lowered)
+        ):
+            terms.append(lowered)
+    return terms
+
+
+def coverage_score(content, terms):
+    """How many distinctive question terms appear in the passage."""
+    lowered = (content or "").lower()
+    return sum(1 for term in terms if term in lowered)
+
+
+def rerank_by_coverage(results, question):
+    """Stable re-rank: passages covering more question terms come first.
+
+    Never drops results (callers may assert full passthrough); ties
+    keep the retrieval order.
+    """
+    terms = distinctive_terms(question)
+    if not terms or not results:
+        return list(results)
+    scored = [
+        (coverage_score(result.get("content", ""), terms), index, result)
+        for index, result in enumerate(results)
+    ]
+    scored.sort(key=lambda item: (-item[0], item[1]))
+    return [result for _score, _index, result in scored]
+
+
+def build_context(results, max_chars_per_source=None):
     """
     Convert retrieved knowledge chunks into a clean
     context block for the AI model.
     """
-
     if not results:
         return ""
 
@@ -40,6 +98,10 @@ def build_context(results):
     for index, result in enumerate(results, start=1):
 
         filename = result.get("filename") or result.get("doc_title") or ""
+        content = result["content"] or ""
+
+        if max_chars_per_source and len(content) > max_chars_per_source:
+            content = content[:max_chars_per_source].rstrip() + " [...]"
 
         context_parts.append(
             f"""
@@ -51,7 +113,7 @@ Similarity: {result["similarity"]:.4f}
 {f"File: {filename}" if filename else ""}
 
 Content:
-{result["content"]}
+{content}
 """.strip()
         )
 
@@ -61,13 +123,14 @@ Content:
 def build_rag_prompt(
     question,
     results,
+    max_chars_per_source=None,
 ):
     """
     Build the prompt that will eventually be sent
     to the AI model.
     """
 
-    context = build_context(results)
+    context = build_context(results, max_chars_per_source)
 
     if not context:
 
@@ -139,6 +202,7 @@ def prepare_rag_request(
     subject_code=None,
     module_number=None,
     limit=5,
+    max_chars_per_source=None,
 ):
     """
     Retrieve relevant knowledge and prepare the
@@ -152,9 +216,15 @@ def prepare_rag_request(
         limit=limit,
     )
 
+    # Re-rank so passages covering the question's distinctive terms
+    # (e.g. normalization, 1NF, functional dependency) outrank
+    # same-subject passages on other topics.
+    results = rerank_by_coverage(results, question)
+
     prompt = build_rag_prompt(
         question=question,
         results=results,
+        max_chars_per_source=max_chars_per_source,
     )
 
     return {

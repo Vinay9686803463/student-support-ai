@@ -336,7 +336,7 @@ def search_fts(
             kc.page_number,
             kc.chunk_number,
             kc.content,
-            ts_rank(
+            ts_rank_cd(
                 to_tsvector('english', kc.content),
                 to_tsquery('english', %s)
             ) AS similarity,

@@ -29,12 +29,8 @@ def gemini_available():
         return False
 
 
-def _gemini_answer(message, context):
-    """Ask Gemini, grounded with the student's subjects + question bank."""
-    import google.generativeai as genai
-
-    genai.configure(api_key=_gemini_key())
-
+def _build_grounded_prompt(message, context):
+    """Grounded prompt from the student's subjects + question bank."""
     subjects = context.get("subjects") or []
     subject_lines = "\n".join(
         f"- {(s.get('code') if isinstance(s, dict) else getattr(s, 'code', ''))}: "
@@ -46,7 +42,7 @@ def _gemini_answer(message, context):
         f"- {_format_question(q)}" for q in questions[:20]
     )
 
-    prompt = (
+    return (
         "You are Student Support AI, a friendly tutor for VTU CSE undergraduates. "
         "Answer clearly and concisely (under 220 words), using short bullet points "
         "where helpful. Stay on academic topics; this is a study app.\n\n"
@@ -56,12 +52,26 @@ def _gemini_answer(message, context):
         f"Student question: {message}"
     )
 
-    for model_name in ("gemini-2.0-flash", "gemini-1.5-flash"):
+
+def _gemini_answer(message, context):
+    """Ask Gemini, grounded with the student's subjects + question bank.
+
+    Used when AI_PROVIDER=gemini (the default provider); skipped otherwise.
+    """
+    import google.generativeai as genai
+
+    genai.configure(api_key=_gemini_key())
+
+    prompt = _build_grounded_prompt(message, context)
+
+    from utils.rag_ai import _model_candidates
+
+    for model_name in _model_candidates():
         try:
             model = genai.GenerativeModel(model_name)
             response = model.generate_content(
                 prompt,
-                request_options={"timeout": 25},
+                request_options={"timeout": 60},
             )
             text = (getattr(response, "text", "") or "").strip()
             if text:
@@ -387,15 +397,24 @@ def generate_answer(message, context=None):
             "For example: 'Explain DBMS normalization'."
         )
 
-    # Tier 1: Google Gemini (only when a real key is configured).
+    # Tier 1: OpenAI (only when a real key is configured).
     # Any failure falls through to the offline engine below.
-    if gemini_available():
-        try:
-            gemini_reply = _gemini_answer(text, context)
-            if gemini_reply:
-                return gemini_reply
-        except Exception:
-            pass
+    try:
+        from utils import openai_provider as _openai
+
+        if _openai.openai_available():
+            try:
+                openai_reply = _openai.generate_answer(
+                    _build_grounded_prompt(text, context),
+                    timeout=45,
+                    max_tokens=800,
+                )
+                if openai_reply:
+                    return openai_reply
+            except Exception:
+                pass
+    except Exception:
+        pass
 
     if any(g == lowered.strip("!., ") for g in GREETING_TRIGGERS):
         subject_names = ", ".join(
