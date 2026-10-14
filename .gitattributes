@@ -1,5 +1,0 @@
-# Never apply line-ending conversion to PDFs: a single rewritten byte
-# corrupts the file. (One committed PDF was already being displayed as
-# text; its blob is intact, and this rule keeps it that way on every
-# checkout, including Windows clones with core.autocrlf=true.)
-*.pdf binary
