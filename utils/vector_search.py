@@ -5,14 +5,9 @@ import psycopg
 from dotenv import load_dotenv
 from functools import lru_cache
 
-
 load_dotenv()
 
 DATABASE_URL = os.getenv("DATABASE_URL")
-
-if not DATABASE_URL:
-    raise RuntimeError("DATABASE_URL is missing from .env")
-
 
 MODEL_NAME = "all-MiniLM-L6-v2"
 
