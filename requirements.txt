@@ -8,7 +8,8 @@ Jinja2==3.1.6
 MarkupSafe==3.0.4
 olefile==0.47
 openai==2.9.0
-psycopg==3.3.6
+psycopg==3.2.13; python_version < "3.10"
+psycopg==3.3.6; python_version >= "3.10"
 psycopg-binary==3.3.6
 python-dotenv==1.2.4
 SQLAlchemy==2.1.3
