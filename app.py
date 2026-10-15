@@ -400,21 +400,41 @@ def login():
 
         try:
 
-            user = db.session.execute(
-                text("""
-                    SELECT
-                        id,
-                        name,
-                        email,
-                        password,
-                        password_hash
-                    FROM users
-                    WHERE email = :email
-                """),
-                {
-                    "email": email
-                }
-            ).mappings().first()
+            try:
+                user = db.session.execute(
+                    text("""
+                        SELECT
+                            id,
+                            name,
+                            email,
+                            password,
+                            password_hash
+                        FROM users
+                        WHERE email = :email
+                    """),
+                    {
+                        "email": email
+                    }
+                ).mappings().first()
+            except Exception as lookup_error:
+                # Temporary diagnostic: type only, no email/SQL/secrets.
+                print(
+                    "LOGIN DIAG: user_found=False "
+                    f"lookup_error={type(lookup_error).__name__}"
+                )
+                raise
+
+            user_found = user is not None
+            has_password_hash = bool(
+                user["password_hash"]) if user_found else False
+            has_legacy_password = bool(
+                user["password"]) if user_found else False
+            # Temporary diagnostic: booleans only, no PII or secrets.
+            print(
+                f"LOGIN DIAG: user_found={user_found} "
+                f"has_password_hash={has_password_hash} "
+                f"has_legacy_password={has_legacy_password}"
+            )
 
             if not user:
                 flash(
@@ -437,8 +457,13 @@ def login():
             # Preferred: proper hash check
             try:
                 password_ok = check_password_hash(stored_hash, password)
-            except (ValueError, AttributeError):
+            except (ValueError, AttributeError) as verify_error:
                 password_ok = False
+                # Temporary diagnostic: type only, no PII or secrets.
+                print(
+                    "LOGIN DIAG: password_ok=False "
+                    f"verify_error={type(verify_error).__name__}"
+                )
 
             # Legacy fallback: plain-text password stored in DB
             if not password_ok and stored_hash == password:
@@ -458,7 +483,14 @@ def login():
                     db.session.commit()
                 except Exception as upgrade_error:
                     db.session.rollback()
-                    print("PASSWORD UPGRADE ERROR:", upgrade_error)
+                    # Temporary diagnostic: type only, redacted.
+                    print(
+                        "PASSWORD UPGRADE ERROR: "
+                        f"{type(upgrade_error).__name__}"
+                    )
+
+            # Temporary diagnostic: booleans only, no PII or secrets.
+            print(f"LOGIN DIAG: password_ok={bool(password_ok)}")
 
             if not password_ok:
                 flash(
@@ -483,7 +515,9 @@ def login():
 
             db.session.rollback()
 
-            print("LOGIN ERROR:", error)
+            # Temporary diagnostic: type only, redacted (no email,
+            # password, hash, DATABASE_URL, or session secret).
+            print(f"LOGIN DIAG: exception={type(error).__name__}")
 
             flash(
                 "Unable to login. Please try again.",
