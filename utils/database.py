@@ -1,4 +1,5 @@
 import os
+import tempfile
 
 from dotenv import load_dotenv  # pyright: ignore[reportMissingImports]
 from flask_sqlalchemy import SQLAlchemy  # pyright: ignore[reportMissingImports]
@@ -8,42 +9,65 @@ from sqlalchemy import inspect, text  # pyright: ignore[reportMissingImports]
 load_dotenv()
 
 
-DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///student_support_ai.db")
+def _resolve_database_url():
+    """Read DATABASE_URL fresh from the environment.
+
+    Module-level ``DATABASE_URL`` is evaluated once at import time, so a
+    value injected later (Vercel runtime env, tests) would otherwise be
+    ignored and the app could silently fall back to SQLite.
+    """
+    database_url = os.getenv("DATABASE_URL", "sqlite:///student_support_ai.db")
+
+    # SQLAlchemy expects postgresql://
+    if database_url.startswith("postgres://"):
+        database_url = database_url.replace(
+            "postgres://",
+            "postgresql://",
+            1
+        )
+
+    return database_url
 
 
-# SQLAlchemy expects postgresql://
-if DATABASE_URL.startswith("postgres://"):
-    DATABASE_URL = DATABASE_URL.replace(
-        "postgres://",
-        "postgresql://",
-        1
-    )
+DATABASE_URL = _resolve_database_url()
 
 
 db = SQLAlchemy()
 
 
-DATABASE_CONFIG = {
-    "SQLALCHEMY_DATABASE_URI": DATABASE_URL,
-    "SQLALCHEMY_TRACK_MODIFICATIONS": False,
-}
+def _build_database_config(database_url):
+    """Build the Flask-SQLAlchemy config for a database URL.
 
-# The deployed app uses PostgreSQL.  A local SQLite database keeps a fresh
-# checkout usable without requiring a hosted database before the first run.
-if DATABASE_URL.startswith("postgresql"):
-    # Reuse connections across requests instead of opening a fresh
-    # TCP+TLS+auth handshake per query (NullPool). pre_ping drops dead
-    # connections and recycle refreshes idle ones, so hosted-DB restarts
-    # and pooler idle timeouts stay safe. Same queries, same results.
-    DATABASE_CONFIG["SQLALCHEMY_ENGINE_OPTIONS"] = {
-        "pool_size": 5,
-        "max_overflow": 10,
-        "pool_pre_ping": True,
-        "pool_recycle": 300,
-        "connect_args": {
-            "connect_timeout": 10
-        }
+    Single source of truth for ``DATABASE_CONFIG`` and
+    ``init_database`` so import-time and request-time config agree.
+    """
+    config = {
+        "SQLALCHEMY_DATABASE_URI": database_url,
+        "SQLALCHEMY_TRACK_MODIFICATIONS": False,
     }
+
+    # The deployed app uses PostgreSQL.  A local SQLite database keeps a
+    # fresh checkout usable without requiring a hosted database before
+    # the first run.
+    if database_url.startswith("postgresql"):
+        # Reuse connections across requests instead of opening a fresh
+        # TCP+TLS+auth handshake per query (NullPool). pre_ping drops dead
+        # connections and recycle refreshes idle ones, so hosted-DB restarts
+        # and pooler idle timeouts stay safe. Same queries, same results.
+        config["SQLALCHEMY_ENGINE_OPTIONS"] = {
+            "pool_size": 5,
+            "max_overflow": 10,
+            "pool_pre_ping": True,
+            "pool_recycle": 300,
+            "connect_args": {
+                "connect_timeout": 10
+            }
+        }
+
+    return config
+
+
+DATABASE_CONFIG = _build_database_config(DATABASE_URL)
 
 
 # =========================================================
@@ -570,8 +594,68 @@ def _migrate_legacy_schema():
         print(f"  ! schema migration skipped: {error}")
 
 
+# =========================================================
+# VERCEL / READ-ONLY FILESYSTEM COMPATIBILITY
+# =========================================================
+
+def _ensure_writable_instance_path(app):
+    """Point Flask at a writable instance dir on read-only filesystems.
+
+    Flask-SQLAlchemy resolves relative SQLite URIs against
+    ``app.instance_path`` and calls ``os.makedirs`` on it during
+    ``init_app``. On Vercel the app directory (``/var/task``) is
+    read-only, so that call fails with::
+
+        OSError: [Errno 30] Read-only file system: '/var/task/instance'
+
+    When the default instance path is already usable (normal local
+    development) this is a no-op. Otherwise the instance path is
+    redirected to an ephemeral directory under the system temp dir
+    (``/tmp`` on Vercel). Only filesystem-only runtime needs (SQLite
+    file location, instance folder creation) use it — never the
+    PostgreSQL data, sessions, or credentials. Temporary files are not
+    expected to persist between serverless invocations.
+    """
+    instance_path = getattr(app, "instance_path", None)
+
+    if not instance_path:
+        return
+
+    try:
+        if os.path.isdir(instance_path):
+            if os.access(instance_path, os.W_OK):
+                return
+        else:
+            parent = os.path.dirname(instance_path) or os.curdir
+            if os.access(parent, os.W_OK):
+                # Flask-SQLAlchemy can create the directory itself.
+                return
+    except Exception:
+        pass
+
+    writable = os.path.join(tempfile.gettempdir(), "ssa-instance")
+    os.makedirs(writable, exist_ok=True)
+    app.instance_path = writable
+
+
 def init_database(app):
-    app.config.update(DATABASE_CONFIG)
+    # Read the URL fresh: the process environment on Vercel (and in
+    # tests) may differ from whatever was present at import time.
+    database_url = _resolve_database_url()
+
+    if os.getenv("VERCEL") and database_url.startswith("sqlite:"):
+        # Never silently boot production on an empty ephemeral SQLite
+        # database (zero users, every login fails). Fail fast with an
+        # actionable message instead of EROFS or an empty DB.
+        raise RuntimeError(
+            "DATABASE_URL is not set: refusing to fall back to SQLite "
+            "on Vercel. Set DATABASE_URL (PostgreSQL) in the Vercel "
+            "project environment variables."
+        )
+
+    _ensure_writable_instance_path(app)
+
+    app.config.update(_build_database_config(database_url))
 
     db.init_app(app)
 
