@@ -837,6 +837,47 @@ a.semester-card {
     cursor: pointer;
 }
 
+/* Semester hover hardening: the ordinary hover keeps its subtle lift
+   and background/border change only. No pseudo-element decoration,
+   custom cursor graphic, or tap-flash circle is ever shown on semester
+   cards or navigation buttons. */
+.semester-grid,
+.semester-nav {
+    -webkit-tap-highlight-color: transparent;
+}
+
+.semester-card:hover::before,
+.semester-card:hover::after,
+.semester-box:hover::before,
+.semester-box:hover::after {
+    content: none;
+}
+
+.semester-card:hover {
+    cursor: inherit;
+}
+
+a.semester-card:hover {
+    cursor: pointer;
+}
+
+div.semester-card.non-clickable:hover {
+    border-color: var(--primary-light);
+    background: linear-gradient(135deg, #f4f7ff, var(--card));
+    box-shadow: var(--shadow);
+    transform: none;
+}
+
+button.semester-box.locked:hover {
+    cursor: not-allowed;
+}
+
+button.semester-box.locked {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+}
+
 .semester-card p {
     margin: 0;
 
@@ -1755,6 +1796,81 @@ a.semester-card {
     font-size: 13px;
 
     line-height: 1.6;
+}
+
+.message-content p + p {
+    margin-top: 8px;
+}
+
+.message-content ul,
+.message-content ol {
+    margin: 8px 0 8px 20px;
+
+    padding: 0;
+
+    font-size: 13px;
+
+    line-height: 1.6;
+}
+
+.message-content li + li {
+    margin-top: 4px;
+}
+
+.message-content h2,
+.message-content h3,
+.message-content h4 {
+    margin: 12px 0 6px;
+
+    line-height: 1.4;
+}
+
+.message-content h2:first-child,
+.message-content h3:first-child,
+.message-content h4:first-child,
+.message-content p:first-child {
+    margin-top: 0;
+}
+
+.message-content pre {
+    margin: 8px 0;
+
+    padding: 10px 12px;
+
+    background: var(--bg);
+
+    border: 1px solid var(--border);
+
+    border-radius: 8px;
+
+    overflow-x: auto;
+
+    white-space: pre-wrap;
+
+    word-break: break-word;
+}
+
+.message-content code {
+    font-size: 12px;
+}
+
+.message-content table {
+    margin: 8px 0;
+
+    border-collapse: collapse;
+
+    font-size: 12px;
+
+    max-width: 100%;
+}
+
+.message-content th,
+.message-content td {
+    padding: 6px 10px;
+
+    border: 1px solid var(--border);
+
+    text-align: left;
 }
 
 
@@ -5025,6 +5141,30 @@ textarea:focus-visible {
 
 .dark-mode .semester-box:hover {
     color: #c7d2fe;
+}
+
+button.semester-box {
+    font: inherit;
+    appearance: none;
+}
+
+button.semester-box.locked {
+    cursor: not-allowed;
+    opacity: 0.65;
+}
+
+button.semester-box.locked:hover {
+    background: var(--surface-2);
+    border-color: var(--border);
+    color: var(--muted);
+    transform: none;
+}
+
+.dark-mode button.semester-box.locked:hover {
+    background: #172033;
+    border-color: var(--border);
+    color: var(--muted);
+    transform: none;
 }
 
 @media (max-width: 850px) {

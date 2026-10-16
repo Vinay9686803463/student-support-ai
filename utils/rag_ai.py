@@ -1,4 +1,5 @@
 import os
+import threading
 import time
 
 from dotenv import load_dotenv
@@ -78,7 +79,7 @@ def gemini_available():
         return False
 
     try:
-        import google.generativeai  # noqa: F401
+        from google import genai  # noqa: F401
 
         return True
 
@@ -133,42 +134,93 @@ def _record_provider_error(code, model=None):
 
 
 _DEFAULT_GEMINI_MODELS = (
-    # Live-verified 2026-10-11: 1.5/2.0/2.5-flash return 404 "no longer
-    # available"; gemini-flash-latest times out. 3.8-flash (provider
-    # recommendation) and 3.5-flash both returned real generations,
-    # so both stay: a transient 504 on the first falls through to
-    # the second instead of the fallback message.
-    "gemini-3.8-flash",
+    # Verified live against the project API key (each tested with a
+    # real minimal generation): gemini-3.5-flash and gemini-3.6-flash
+    # both return real answers (~3s) and are tried in that order.
+    # gemini-3.7-flash and gemini-3.8-flash consistently return
+    # server_error with this key although listed by the models endpoint,
+    # and 1.5/2.0/2.5-flash return 404 "no longer available" (2.5
+    # is not listed at all). Never re-add an untested model first:
+    # every chat would pay its failure latency before reaching a
+    # working model.
     "gemini-3.5-flash",
+    "gemini-3.6-flash",
 )
+
+
+def _explicit_candidates():
+    """Operator-configured models from GEMINI_MODELS/GEMINI_MODEL.
+
+    Returns a tuple, or None when neither variable is set, so the
+    caller can tell "operator chose these" apart from defaults.
+    """
+    raw = (os.getenv("GEMINI_MODELS") or "").strip()
+    if raw:
+        names = tuple(
+            part.strip() for part in raw.split(",") if part.strip()
+        )
+        return names or None
+    single = (os.getenv("GEMINI_MODEL") or "").strip()
+    return (single,) if single else None
 
 
 def _model_candidates():
     """Model names to try, in order.
 
     Overridable without a code change via GEMINI_MODELS
-    ("a,b,c") so a retired model name can be rotated by the
-    operator. Falls back to the built-in defaults when unset.
+    ("a,b,c") or the single GEMINI_MODEL, so a retired model
+    name can be rotated by the operator. Falls back to the
+    built-in defaults when unset.
     """
-    raw = (os.getenv("GEMINI_MODELS") or "").strip()
-    if not raw:
-        return _DEFAULT_GEMINI_MODELS
-    names = tuple(part.strip() for part in raw.split(",") if part.strip())
-    return names or _DEFAULT_GEMINI_MODELS
+    return _explicit_candidates() or _DEFAULT_GEMINI_MODELS
 
 
-def _gemini_models():
-    import google.generativeai as genai
+def _defaults_after(tried):
+    """Verified defaults not already tried, for retired-model recovery.
 
-    genai.configure(
-        api_key=_gemini_key()
+    Used only when every explicitly configured model failed with
+    model_not_found: the operator's choice is always tried first
+    and any other error (auth, quota, network) is reported as-is
+    instead of burning latency on models that would fail the same
+    way.
+    """
+    if not _explicit_candidates():
+        return ()
+    tried_set = set(tried or ())
+    return tuple(
+        model for model in _DEFAULT_GEMINI_MODELS
+        if model not in tried_set
     )
 
-    for model_name in _model_candidates():
-        try:
-            yield genai.GenerativeModel(model_name)
-        except Exception:
-            continue
+
+_GEMINI_CLIENTS = {}
+_GEMINI_CLIENTS_LOCK = threading.Lock()
+
+
+def _gemini_client(timeout):
+    """Build (and reuse) a Gemini client for requests.
+
+    Uses the installed ``google-genai`` SDK (``google.genai``).
+    ``http_options`` timeout is in milliseconds.
+
+    Clients are cached per (key, timeout): construction costs
+    ~24ms (measured), and every chat question previously paid it.
+    Reuse is thread-safe (one lock-guarded dict, bounded size); a
+    rotated key simply gets its own entry, and keys are never logged.
+    """
+    from google import genai
+
+    entry = (_gemini_key(), max(1, int(timeout * 1000)))
+    with _GEMINI_CLIENTS_LOCK:
+        client = _GEMINI_CLIENTS.get(entry)
+        if client is None:
+            if len(_GEMINI_CLIENTS) >= 8:
+                _GEMINI_CLIENTS.pop(next(iter(_GEMINI_CLIENTS)))
+            client = genai.Client(
+                api_key=entry[0], http_options={"timeout": entry[1]}
+            )
+            _GEMINI_CLIENTS[entry] = client
+        return client
 
 
 def _call_gemini(prompt, timeout=30):
@@ -177,19 +229,23 @@ def _call_gemini(prompt, timeout=30):
     text or None. Server-side only: the API key never leaves the backend.
     """
 
-    for model in _gemini_models():
+    try:
+        client = _gemini_client(timeout)
+    except Exception as error:
+        _record_provider_error(_classify_provider_error(error))
+        return None
 
-        model_name = getattr(model, "model_name", None) or getattr(
-            model, "_model_name", "unknown"
-        )
+    tried = []
+    only_not_found = True
+
+    for model_name in _model_candidates():
+        tried.append(model_name)
 
         try:
 
-            response = model.generate_content(
-                prompt,
-                request_options={
-                    "timeout": timeout
-                },
+            response = client.models.generate_content(
+                model=model_name,
+                contents=prompt,
             )
 
             answer = (
@@ -201,28 +257,59 @@ def _call_gemini(prompt, timeout=30):
                 print(f"GEMINI OK model={model_name} chars={len(answer)}")
                 return answer
 
+            only_not_found = False
+
         except Exception as error:
-            _record_provider_error(
-                _classify_provider_error(error), model=model_name
-            )
+            code = _classify_provider_error(error)
+            _record_provider_error(code, model=model_name)
+            if code != "model_not_found":
+                only_not_found = False
             continue
+
+    # Every explicitly configured model came back model_not_found
+    # (e.g. a retired name left in GEMINI_MODEL): recover with the
+    # verified defaults instead of giving up with
+    # provider_not_configured. Any other error is reported as-is.
+    if only_not_found:
+        for model_name in _defaults_after(tried):
+            try:
+                response = client.models.generate_content(
+                    model=model_name,
+                    contents=prompt,
+                )
+                answer = (
+                    getattr(response, "text", "")
+                    or ""
+                ).strip()
+                if answer:
+                    print(
+                        f"GEMINI OK model={model_name} chars={len(answer)}"
+                    )
+                    return answer
+            except Exception as error:
+                _record_provider_error(
+                    _classify_provider_error(error), model=model_name
+                )
+                continue
 
     return None
 
 
 def _stream_gemini(prompt, timeout=30):
     """Yield Gemini answer pieces as they arrive (empty if unavailable)."""
-    for model in _gemini_models():
-        model_name = getattr(model, "model_name", None) or getattr(
-            model, "_model_name", "unknown"
-        )
+    try:
+        client = _gemini_client(timeout)
+    except Exception as error:
+        _record_provider_error(_classify_provider_error(error))
+        return
+    tried = []
+    only_not_found = True
+    for model_name in _model_candidates():
+        tried.append(model_name)
         try:
-            response = model.generate_content(
-                prompt,
-                stream=True,
-                request_options={
-                    "timeout": timeout
-                },
+            response = client.models.generate_content_stream(
+                model=model_name,
+                contents=prompt,
             )
             yielded = False
             for chunk in response:
@@ -232,11 +319,35 @@ def _stream_gemini(prompt, timeout=30):
                     yield piece
             if yielded:
                 return
+            only_not_found = False
         except Exception as error:
-            _record_provider_error(
-                _classify_provider_error(error), model=model_name
-            )
+            code = _classify_provider_error(error)
+            _record_provider_error(code, model=model_name)
+            if code != "model_not_found":
+                only_not_found = False
             continue
+    # Same retired-model recovery as _call_gemini: only when every
+    # explicitly configured model said model_not_found.
+    if only_not_found:
+        for model_name in _defaults_after(tried):
+            try:
+                response = client.models.generate_content_stream(
+                    model=model_name,
+                    contents=prompt,
+                )
+                yielded = False
+                for chunk in response:
+                    piece = (getattr(chunk, "text", "") or "")
+                    if piece:
+                        yielded = True
+                        yield piece
+                if yielded:
+                    return
+            except Exception as error:
+                _record_provider_error(
+                    _classify_provider_error(error), model=model_name
+                )
+                continue
 
 
 def _offline_general_explanation(question):
@@ -309,21 +420,18 @@ def _provider_hint(provider, error_code):
 
 def _compose_no_provider_answer(question, results,
                                 provider=None, error_code=None):
-    """Honest answer text when no language model is reachable.
+    """User-safe answer text when no language model is reachable.
 
-    States the limitation up front, adds a labeled general
-    explanation when the built-in study bank covers the topic,
-    then lists the retrieved passages as excerpts - never
-    masquerading as a synthesized answer.
+    The user sees a short, friendly notice plus clearly labeled
+    study-bank content - never raw error codes, model names, setup
+    instructions, or stack traces. Those stay in the backend log
+    (see the AI UNAVAILABLE print at the call site) and in the
+    machine-readable ``error_code`` field of the response.
     """
     parts = [
-        "Direct AI answering is currently unavailable, so I cannot "
-        "synthesize a full answer right now. Please try again later "
-        "for a complete explanation.\n"
+        "The AI assistant is temporarily unavailable. "
+        "Please try again shortly.\n"
     ]
-    hint = _provider_hint(provider, error_code)
-    if hint:
-        parts.append(hint)
     general = _offline_general_explanation(question)
     if general:
         parts.append(
@@ -435,7 +543,7 @@ def answer_with_rag(
 
     provider = active_provider()
 
-    # Try the configured model provider (OpenAI by default).
+    # Try the configured model provider (gemini by default).
     if provider == "openai":
 
         try:
@@ -551,8 +659,17 @@ def answer_with_rag(
 
         last_error = get_last_provider_error()
         error_code = last_error.get("code") or "provider_not_configured"
+        effective_provider = provider or configured_provider()
+        # Developer-facing diagnostic only (backend log): the setup
+        # hint names env vars and local URLs but never secrets, and
+        # the user-facing text above carries no technical details.
+        print(
+            f"AI UNAVAILABLE provider={effective_provider} "
+            f"error={error_code} "
+            f"hint={_provider_hint(effective_provider, error_code)}"
+        )
         fallback_answer = _compose_no_provider_answer(
-            question, results, provider=provider or configured_provider(),
+            question, results, provider=effective_provider,
             error_code=error_code)
 
         response = {
@@ -567,10 +684,9 @@ def answer_with_rag(
             "latency_ms": int((time.monotonic() - started) * 1000),
             "cached": False,
         }
-        cache_put(
-            cache_key(question, subject_code, module_number, mode, kb_version),
-            response,
-        )
+        # Deliberately NOT cached: a failed answer must never be
+        # re-served for hours (6h TTL) after the provider recovers.
+        # Success responses above are cached; failures always retry.
         return response
 
     return {

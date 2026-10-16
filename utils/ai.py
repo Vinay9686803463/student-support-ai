@@ -23,7 +23,7 @@ def gemini_available():
     if not _gemini_key():
         return False
     try:
-        import google.generativeai  # noqa: F401
+        from google import genai  # noqa: F401
         return True
     except Exception:
         return False
@@ -58,9 +58,9 @@ def _gemini_answer(message, context):
 
     Used when AI_PROVIDER=gemini (the default provider); skipped otherwise.
     """
-    import google.generativeai as genai
+    from google import genai
 
-    genai.configure(api_key=_gemini_key())
+    client = genai.Client(api_key=_gemini_key())
 
     prompt = _build_grounded_prompt(message, context)
 
@@ -68,10 +68,9 @@ def _gemini_answer(message, context):
 
     for model_name in _model_candidates():
         try:
-            model = genai.GenerativeModel(model_name)
-            response = model.generate_content(
-                prompt,
-                request_options={"timeout": 60},
+            response = client.models.generate_content(
+                model=model_name,
+                contents=prompt,
             )
             text = (getattr(response, "text", "") or "").strip()
             if text:

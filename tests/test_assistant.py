@@ -156,7 +156,7 @@ def test_answer_kind_no_provider_stubbed():
     assert out["used_ai"] is False
     assert out["answer_kind"] == "fallback_excerpts"
     assert out["error_code"] == "provider_not_configured"
-    assert "Direct AI answering is currently unavailable" in out["answer"]
+    assert "The AI assistant is temporarily unavailable" in out["answer"]
 
 
 def test_coverage_rerank_prefers_topical_passage():

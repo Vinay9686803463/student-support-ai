@@ -1,10 +1,19 @@
 import os
 import re
-
-import psycopg
-from dotenv import load_dotenv
 from functools import lru_cache
 
+
+def _load_dotenv():
+    try:
+        from importlib import import_module
+
+        _load_dotenv_func = import_module("dotenv").load_dotenv
+    except ImportError:
+        def _load_dotenv_func(*args, **kwargs):
+            return False
+    return _load_dotenv_func
+
+load_dotenv = _load_dotenv()
 load_dotenv()
 
 DATABASE_URL = os.getenv("DATABASE_URL")
@@ -83,7 +92,9 @@ def get_model():
     if _model is None:
         # Imported lazily so keyword search keeps working on machines
         # without torch installed; only vector search needs the model.
-        from sentence_transformers import SentenceTransformer
+        from importlib import import_module
+
+        SentenceTransformer = import_module("sentence_transformers").SentenceTransformer
 
         try:
             _model = SentenceTransformer(MODEL_NAME)

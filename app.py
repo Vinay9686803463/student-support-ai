@@ -2,6 +2,11 @@ import os
 import re
 from functools import wraps
 from pathlib import Path
+from io import BytesIO
+
+import boto3
+from botocore.exceptions import BotoCoreError, ClientError
+
 
 from dotenv import load_dotenv  # pyright: ignore[reportMissingImports]
 
@@ -13,7 +18,7 @@ from dotenv import load_dotenv  # pyright: ignore[reportMissingImports]
 _PROJECT_ROOT = Path(__file__).resolve().parent
 load_dotenv(_PROJECT_ROOT / ".env", override=False)
 
-from flask import (
+from flask import (  # pyright: ignore[reportMissingImports]
     Flask,
     Response,
     abort,
@@ -26,9 +31,9 @@ from flask import (
     session,
     url_for
 )
-from sqlalchemy import bindparam, text
-from sqlalchemy.orm import load_only
-from werkzeug.security import check_password_hash, generate_password_hash
+from sqlalchemy import bindparam, text  # pyright: ignore[reportMissingImports]
+from sqlalchemy.orm import load_only  # pyright: ignore[reportMissingImports]
+from werkzeug.security import check_password_hash, generate_password_hash  # pyright: ignore[reportMissingImports]
 
 from utils.database import (
     Conversation,
@@ -46,6 +51,91 @@ from utils.bootstrap_latex import ensure_latex_materials
 
 
 load_dotenv(_PROJECT_ROOT / ".env", override=False)
+
+
+def get_b2_client():
+    """Connect to private Backblaze B2 storage."""
+    endpoint = os.getenv("B2_ENDPOINT_URL")
+    key_id = os.getenv("B2_KEY_ID")
+    application_key = os.getenv("B2_APPLICATION_KEY")
+
+    if not all((endpoint, key_id, application_key)):
+        return None
+
+    return boto3.client(
+        "s3",
+        endpoint_url=endpoint,
+        aws_access_key_id=key_id,
+        aws_secret_access_key=application_key,
+        region_name="us-east-005",
+    )
+
+
+def get_knowledge_file(file_path):
+    """
+    Return a local knowledge-base file when present.
+    Otherwise retrieve the same relative key from private B2 storage.
+    """
+    raw_path = (file_path or "").strip().replace("\\", "/")
+    if not raw_path:
+        abort(404)
+
+    relative_path = Path(raw_path)
+
+    # Only allow paths inside knowledge_base.
+    if relative_path.is_absolute() or ".." in relative_path.parts:
+        abort(404)
+
+    if not relative_path.parts or relative_path.parts[0] != "knowledge_base":
+        abort(404)
+
+    base_dir = (Path(app.root_path) / "knowledge_base").resolve()
+    local_path = (Path(app.root_path) / relative_path).resolve()
+
+    try:
+        local_path.relative_to(base_dir)
+    except ValueError:
+        abort(404)
+
+    # Prefer local files during development.
+    if local_path.is_file():
+        return local_path
+
+    # On Vercel, retrieve missing files from B2.
+    bucket = os.getenv("B2_BUCKET_NAME")
+    s3 = get_b2_client()
+
+    if not bucket or not s3:
+        app.logger.error("B2 storage is not configured.")
+        abort(503)
+
+    try:
+        response = s3.get_object(
+            Bucket=bucket,
+            Key=relative_path.as_posix(),
+        )
+        body = response["Body"]
+
+        try:
+            return BytesIO(body.read())
+        finally:
+            body.close()
+
+    except ClientError as error:
+        status = error.response.get("ResponseMetadata", {}).get(
+            "HTTPStatusCode"
+        )
+        code = error.response.get("Error", {}).get("Code", "")
+
+        if status == 404 or code in ("NoSuchKey", "NotFound"):
+            abort(404)
+
+        app.logger.exception("Backblaze B2 file retrieval failed.")
+        abort(502)
+
+    except BotoCoreError:
+        app.logger.exception("Backblaze B2 connection failed.")
+        abort(502)
 
 
 app = Flask(__name__)
@@ -68,12 +158,10 @@ with app.app_context():
 
 
 def provider_diagnostics():
-    """Safe startup/self-check report: booleans and names only.
+    """Check AI provider configuration without exposing secrets."""
+    import importlib.util
+    import re
 
-    Never includes key material. Used by the boot banner and the
-    /api/provider-status route so a misconfigured server is obvious
-    instead of surfacing as a generic chat fallback.
-    """
     report = {
         "env_file": str(_PROJECT_ROOT / ".env"),
         "env_file_exists": (_PROJECT_ROOT / ".env").is_file(),
@@ -83,49 +171,68 @@ def provider_diagnostics():
         "sdk_ok": False,
         "ready": False,
     }
+
     try:
-        from utils.rag_ai import active_provider, configured_provider
-        from utils import openai_provider as _openai
+        # Ensure the project's .env is loaded before checking settings.
+        load_dotenv(_PROJECT_ROOT / ".env", override=False)
 
-        provider = active_provider()
-        report["provider"] = configured_provider()
-        # Probe SDK + key independently of activation so the banner
-        # tells the truth even when nothing is usable.
-        report["key_present"] = _openai.openai_key_present()
-        try:
-            import openai  # noqa: F401
-            report["sdk_ok"] = True
-        except Exception:
-            report["sdk_ok"] = False
-        if provider == "openai":
-            report["model"] = _openai.configured_model()
-            report["ready"] = bool(
-                report["key_present"] and report["sdk_ok"])
-        elif provider == "gemini":
-            from utils.rag_ai import gemini_available, _gemini_key
+        from utils.rag_ai import configured_provider
 
-            key = _gemini_key() or ""
+        provider = (configured_provider() or "gemini").strip().lower()
+        report["provider"] = provider
+
+        if provider == "gemini":
+            key = (
+                os.getenv("GOOGLE_GENERATIVE_AI_API_KEY") or ""
+            ).strip()
+
             report["key_present"] = bool(key)
-            import re as _re
             report["key_format_ok"] = bool(
-                _re.fullmatch(r"AIza[0-9A-Za-z_-]{30,}", key))
+                re.fullmatch(r"AIza[0-9A-Za-z_-]{30,}", key)
+            )
+            report["model"] = (
+                os.getenv("GEMINI_MODEL") or "gemini-2.5-flash"
+            ).strip()
+
             try:
-                import google.generativeai  # noqa: F401
-                report["sdk_ok"] = True
-            except Exception:
+                report["sdk_ok"] = (
+                    importlib.util.find_spec("google.genai") is not None
+                )
+            except (ImportError, ModuleNotFoundError, ValueError):
                 report["sdk_ok"] = False
-            report["ready"] = bool(
-                report["key_present"] and report["sdk_ok"])
+
+            report["ready"] = (
+                report["key_present"] and report["sdk_ok"]
+            )
+
+        elif provider == "openai":
+            from utils import openai_provider as _openai
+
+            report["key_present"] = _openai.openai_key_present()
+            report["model"] = _openai.configured_model()
+            report["sdk_ok"] = (
+                importlib.util.find_spec("openai") is not None
+            )
+            report["ready"] = (
+                report["key_present"] and report["sdk_ok"]
+            )
+
         elif provider == "ollama":
             from utils import ollama_provider as _ollama
 
             report["model"] = _ollama.configured_model()
-            report["key_present"] = True  # local inference needs no key
-            report["sdk_ok"] = True  # stdlib HTTP client, no dependency
+            report["key_present"] = True
+            report["sdk_ok"] = True
             report["ollama_url"] = _ollama.configured_url()
             report["ready"] = _ollama.ollama_available()
-    except Exception as diag_error:
-        report["error"] = str(diag_error)[:120]
+
+        else:
+            report["error"] = "Unsupported provider"
+
+    except Exception as exc:
+        # Report the exception type, never secret values.
+        report["error"] = type(exc).__name__
+
     return report
 
 
@@ -931,6 +1038,10 @@ def api_chat():
         print("CHAT SUBJECTS CTX ERROR:", error)
 
     try:
+        # All-semester question bank (branch + scheme only): the study
+        # assistant must answer from materials of every semester, not
+        # just the student's current one. The subjects list above stays
+        # current-semester scoped for identity/greeting purposes.
         rows = db.session.execute(
             text("""
                 SELECT q.question, q.unit, q.marks,
@@ -940,14 +1051,12 @@ def api_chat():
                 JOIN subjects s ON s.id = q.subject_id
                 WHERE s.branch = :branch
                   AND s.scheme = :scheme
-                  AND s.semester = :semester
                 ORDER BY q.id ASC
                 LIMIT 200
             """),
             {
                 "branch": user["branch"],
-                "scheme": user["scheme"],
-                "semester": user["current_semester"]
+                "scheme": user["scheme"]
             }
         ).mappings().all()
         questions_ctx = [dict(r) for r in rows]
@@ -971,8 +1080,6 @@ def api_chat():
 
     # Fallback: offline study-assistant engine.
     try:
-        from utils.rag_ai import active_provider
-
         reply = generate_answer(
             message,
             {
@@ -982,8 +1089,20 @@ def api_chat():
                 "resources": resources_ctx
             }
         )
-        provider = active_provider()
-        engine = {"openai": "openai", "gemini": "gemini"}.get(provider, "offline")
+        # Label honestly: generate_answer's only live-AI tier is
+        # OpenAI, so the engine is "openai" exactly when an OpenAI
+        # key is configured, else "offline". active_provider() must
+        # not be used here: it can report gemini/ollama, which this
+        # path never calls, mislabeling study-bank text as AI-made.
+        try:
+            from utils import openai_provider as _fallback_openai
+            engine = (
+                "openai"
+                if _fallback_openai.openai_available()
+                else "offline"
+            )
+        except Exception:
+            engine = "offline"
     except Exception as error:
         print("CHAT GENERATE ERROR:", error)
         reply = (
@@ -1105,6 +1224,23 @@ def subjects():
     if selected_semester not in (1, 2, 3, 4, 5, 6, 7, 8):
         selected_semester = user["current_semester"]
 
+    # My Academic Journey scope: only the 5th Semester is accessible.
+    # Locked semesters (1-4, 6-8) never render an empty subject list;
+    # direct route access redirects back to the 5th Semester page.
+    # No database rows are touched; the 5th-semester path below is
+    # completely unchanged.
+    if selected_semester != 5:
+        _ORDINAL = {
+            1: "1st", 2: "2nd", 3: "3rd", 4: "4th",
+            6: "6th", 7: "7th", 8: "8th",
+        }
+        flash(
+            f"{_ORDINAL.get(selected_semester, 'That')} Semester is "
+            "locked. Only 5th Semester is available.",
+            "error"
+        )
+        return redirect(url_for("subjects"))
+
     try:
         subjects = (
             Subject.query
@@ -1183,6 +1319,12 @@ def subjects():
         else:
             core_subjects.append(subject_row)
 
+    # My Academic Journey scope: the Professional Elective section is
+    # hidden from the 5th Semester UI only. Database rows are untouched;
+    # an empty list keeps the template's conditional section from
+    # rendering. All other 5th Semester content is unchanged.
+    professional_subjects = []
+
     return render_template(
         "subjects.html",
         user=user,
@@ -1194,7 +1336,6 @@ def subjects():
             len(core_subjects)
             + len(alternative_subjects)
             + len(elective_subjects)
-            + len(professional_subjects)
         ),
         semester=selected_semester
     )
@@ -1209,8 +1350,7 @@ def subjects():
 @login_required
 def subject_detail(subject_code):
 
-    from flask import abort
-    from werkzeug.exceptions import HTTPException
+    from werkzeug.exceptions import HTTPException  # pyright: ignore[reportMissingImports]
 
     user = get_current_user()
 
@@ -1285,6 +1425,19 @@ def subject_detail(subject_code):
 
     if from_semester not in (1, 2, 3, 4, 5, 6, 7, 8):
         from_semester = subject["semester"]
+
+    # My Academic Journey scope: only 5th-semester subjects are
+    # accessible. Direct route access to any other semester's subject
+    # redirects back to the 5th Semester page instead of rendering an
+    # empty detail page. No rows are touched; the 5th-semester path
+    # below is completely unchanged.
+    if subject.get("semester") != 5:
+        flash(
+            "That semester is locked. "
+            "Only 5th Semester is available.",
+            "error"
+        )
+        return redirect(url_for("subjects"))
 
     # Only id/unit are used below (counts + unit cards); the large
     # `answer` TEXT column stays deferred so the DB transfers less per
@@ -1699,134 +1852,74 @@ def subject_detail(subject_code):
         from_semester=from_semester
     )
 
-
 # =========================================================
-# KNOWLEDGE PDF VIEWER (serves PDFs registered in
-# knowledge_documents; the browser never supplies a path)
+# KNOWLEDGE PDF VIEWER (local files + Backblaze B2)
 # =========================================================
 
 @app.route("/knowledge/pdf/<int:document_id>")
 @login_required
 def knowledge_pdf(document_id):
-
-    from pathlib import Path
-
     try:
         row = db.session.execute(
             text("""
-                SELECT
-                    id,
-                    original_filename,
-                    file_path
+                SELECT id, original_filename, file_path
                 FROM knowledge_documents
                 WHERE id = :doc_id
             """),
-            {"doc_id": document_id}
+            {"doc_id": document_id},
         ).mappings().first()
-    except Exception as error:
+    except Exception:
         db.session.rollback()
-        print("KNOWLEDGE PDF QUERY ERROR:", error)
-        row = None
+        app.logger.exception("KNOWLEDGE PDF QUERY ERROR")
+        abort(500)
 
     if not row or not (row["file_path"] or "").strip():
         abort(404)
 
-    raw_path = (row["file_path"] or "").strip().replace("\\", "/")
+    raw_path = row["file_path"].strip().replace("\\", "/")
 
-    base_dir = Path(app.root_path) / "knowledge_base"
-
-    candidate = Path(raw_path)
-    if not candidate.is_absolute():
-        candidate = Path(app.root_path) / raw_path
-
-    try:
-        resolved = candidate.resolve()
-        base_resolved = base_dir.resolve()
-    except Exception:
+    if Path(raw_path).suffix.lower() != ".pdf":
         abort(404)
 
-    try:
-        resolved.relative_to(base_resolved)
-    except ValueError:
-        # Path escapes the knowledge base: refuse to serve it.
-        abort(404)
-
-    if resolved.suffix.lower() != ".pdf" or not resolved.is_file():
-        abort(404)
+    file_obj = get_knowledge_file(raw_path)
 
     return send_file(
-        resolved,
+        file_obj,
         mimetype="application/pdf",
         as_attachment=False,
-        download_name=row["original_filename"] or resolved.name
+        download_name=row["original_filename"] or Path(raw_path).name,
     )
 
 
 # =========================================================
-# KNOWLEDGE DOCUMENT VIEWER (project resources: docx/doc/ppt;
-# same security model as the PDF viewer — id lookup only)
+# KNOWLEDGE DOCUMENT VIEWER (local files + Backblaze B2)
 # =========================================================
 
 @app.route("/knowledge/document/<int:document_id>")
 @login_required
 def knowledge_document(document_id):
-
-    from pathlib import Path
-
     try:
         row = db.session.execute(
             text("""
-                SELECT
-                    id,
-                    original_filename,
-                    file_path
+                SELECT id, original_filename, file_path
                 FROM knowledge_documents
                 WHERE id = :doc_id
             """),
-            {"doc_id": document_id}
+            {"doc_id": document_id},
         ).mappings().first()
-    except Exception as error:
+    except Exception:
         db.session.rollback()
-        print("KNOWLEDGE DOCUMENT QUERY ERROR:", error)
-        row = None
+        app.logger.exception("KNOWLEDGE DOCUMENT QUERY ERROR")
+        abort(500)
 
     if not row or not (row["file_path"] or "").strip():
         abort(404)
 
-    raw_path = (row["file_path"] or "").strip().replace("\\", "/")
-
-    base_dir = Path(app.root_path) / "knowledge_base"
-
-    candidate = Path(raw_path)
-    if not candidate.is_absolute():
-        candidate = Path(app.root_path) / raw_path
-
-    try:
-        resolved = candidate.resolve()
-        base_resolved = base_dir.resolve()
-    except Exception:
-        abort(404)
-
-    try:
-        resolved.relative_to(base_resolved)
-    except ValueError:
-        # Path escapes the knowledge base: refuse to serve it.
-        abort(404)
-
-    if not resolved.is_file():
-        abort(404)
-
-    suffix = resolved.suffix.lower()
-
-    if suffix == ".pdf":
-        return send_file(
-            resolved,
-            mimetype="application/pdf",
-            as_attachment=False,
-            download_name=row["original_filename"] or resolved.name
-        )
+    raw_path = row["file_path"].strip().replace("\\", "/")
+    suffix = Path(raw_path).suffix.lower()
 
     mime_types = {
+        ".pdf": "application/pdf",
         ".docx": (
             "application/vnd.openxmlformats-officedocument."
             "wordprocessingml.document"
@@ -1849,23 +1942,21 @@ def knowledge_document(document_id):
         ".txt": "text/plain",
     }
 
-    # Images and plain text render natively in the browser, so they are
-    # served inline (the existing "View File" link opens them in a new
-    # tab). Office formats cannot render reliably in the browser, so
-    # they are served as downloads instead of inline documents.
-    if suffix in (".jpg", ".jpeg", ".png", ".gif", ".webp", ".txt"):
-        return send_file(
-            resolved,
-            mimetype=mime_types.get(suffix, "application/octet-stream"),
-            as_attachment=False,
-            download_name=row["original_filename"] or resolved.name
-        )
+    if suffix not in mime_types:
+        abort(404)
+
+    file_obj = get_knowledge_file(raw_path)
+    filename = row["original_filename"] or Path(raw_path).name
+
+    inline_types = {
+        ".pdf", ".jpg", ".jpeg", ".png", ".gif", ".webp", ".txt"
+    }
 
     return send_file(
-        resolved,
-        mimetype=mime_types.get(suffix, "application/octet-stream"),
-        as_attachment=True,
-        download_name=row["original_filename"] or resolved.name
+        file_obj,
+        mimetype=mime_types[suffix],
+        as_attachment=suffix not in inline_types,
+        download_name=filename,
     )
 
 

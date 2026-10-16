@@ -1,21 +1,10 @@
-blinker==1.9.0
-click==8.1.8
-Flask==3.1.3
-Flask-SQLAlchemy==3.1.1
-google-generativeai==0.8.5
-itsdangerous==2.2.0
-Jinja2==3.1.6
-MarkupSafe==3.0.4
-olefile==0.47
-openai==2.9.0
-psycopg==3.2.13; python_version < "3.10"
-psycopg==3.3.6; python_version >= "3.10"
-psycopg-binary==3.2.13; python_version < "3.10"
-psycopg-binary==3.3.6; python_version >= "3.10"
-python-dotenv==1.1.1; python_version < "3.10"
-python-dotenv==1.2.4; python_version >= "3.10"
-SQLAlchemy==2.1.3
-typing_extensions==4.16.0
-tzdata==2026.5
-Werkzeug==3.1.9
-pdfminer.six==20260107
+Flask
+Flask-SQLAlchemy
+python-dotenv
+boto3
+SQLAlchemy
+gunicorn
+psycopg[binary]
+pypdf
+google-genai
+openai

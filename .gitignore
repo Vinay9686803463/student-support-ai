@@ -6,3 +6,4 @@ venv/
 *.log
 storage/
 .vercel
+.env*

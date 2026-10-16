@@ -234,7 +234,10 @@ function renderInline(text) {
 function renderMarkdown(text) {
     // Small block renderer for model answers: fenced code, headings,
     // bullet/numbered lists, tables, rules, paragraphs. Input is
-    // escaped first; single newlines inside a paragraph become <br>.
+    // escaped first. Single newlines inside a paragraph are soft
+    // wraps and join with a space (standard Markdown); only a blank
+    // line starts a new paragraph. This keeps related sentences
+    // together instead of breaking every line apart.
     var lines = escapeHtml(text).split("\n");
     var html = [];
     var inCode = false;
@@ -245,7 +248,7 @@ function renderMarkdown(text) {
 
     function flushPara() {
         if (paraBuf.length) {
-            html.push("<p>" + renderInline(paraBuf.join("<br>")) + "</p>");
+            html.push("<p>" + renderInline(paraBuf.join(" ")) + "</p>");
             paraBuf = [];
         }
     }
@@ -411,8 +414,10 @@ function updateStatus(info) {
             : provider === "gemini" ? "Gemini"
             : provider === "ollama" ? "Ollama (local)" : "AI");
     } else if (info.answer_kind === "fallback_excerpts") {
-        bits.push("⚠ fallback — AI unavailable" +
-            (info.error_code ? " (" + info.error_code + ")" : ""));
+        // User-safe: never render raw error codes or model names.
+        // The machine-readable error_code stays in the payload for
+        // developers (browser devtools / backend log).
+        bits.push("⚠ AI temporarily unavailable");
     } else if (info.engine) {
         bits.push(info.engine);
     }

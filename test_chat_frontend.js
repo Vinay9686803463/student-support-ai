@@ -177,4 +177,51 @@ const SSE_TOKEN = (t) => `event: token\ndata: {"text": ${JSON.stringify(t)}}\n\n
     }, 50);
 }
 
+// 4b. Markdown: soft-wrapped lines stay in one paragraph.
+{
+    const { sandbox } = makeSandbox([]);
+    loadChat(sandbox);
+    try {
+        const out = vm.runInContext(`formatReply(${JSON.stringify(
+            "Waterfall works in sequential phases.\nRequirements flow into design.\n\nAgile welcomes change."
+        )})`, sandbox);
+        assert.ok(out.includes("<p>Waterfall works in sequential phases. Requirements flow into design.</p>"),
+            "related sentences stay together, got: " + out);
+        assert.ok(!out.includes("<br>"), "no accidental line breaks, got: " + out);
+        assert.strictEqual((out.match(/<p>/g) || []).length, 2, "two paragraphs");
+        console.log("PASS paragraphs keep soft-wrapped sentences together");
+    } catch (e) { console.error("FAIL paragraphs:", e.message); process.exitCode = 1; }
+}
+
+// 4c. Markdown: headings and numbered lists render correctly.
+{
+    const { sandbox } = makeSandbox([]);
+    loadChat(sandbox);
+    try {
+        const out = vm.runInContext(`formatReply(${JSON.stringify(
+            "## Waterfall Steps\n\n1. Gather requirements\n2. Design the system\n3. Test thoroughly"
+        )})`, sandbox);
+        assert.ok(out.includes("<h3>Waterfall Steps</h3>"), "heading, got: " + out);
+        assert.ok(out.includes("<ol>") && out.includes("<li>Gather requirements</li>") &&
+            out.includes("<li>Test thoroughly</li>"), "numbered list, got: " + out);
+        console.log("PASS headings and numbered lists render");
+    } catch (e) { console.error("FAIL headings/lists:", e.message); process.exitCode = 1; }
+}
+
+// 5. Fallback status shows no raw error codes or model names.
+{
+    const { sandbox, byId } = makeSandbox([]);
+    loadChat(sandbox);
+    try {
+        vm.runInContext(`updateStatus({answer_kind: "fallback_excerpts", error_code: "model_not_found", mode: "fast", latency_ms: 1500})`, sandbox);
+        const text = byId.engineStatus.textContent;
+        assert.ok(text.includes("unavailable"), "friendly fallback label, got: " + text);
+        assert.ok(!text.includes("model_not_found"), "no raw code, got: " + text);
+        assert.ok(!text.toLowerCase().includes("gemini"), "no model name, got: " + text);
+        vm.runInContext(`updateStatus({answer_kind: "ai_generated", provider: "gemini", mode: "fast"})`, sandbox);
+        assert.ok(byId.engineStatus.textContent.includes("Gemini"), "provider badge intact");
+        console.log("PASS fallback status is user-safe, AI badge intact");
+    } catch (e) { console.error("FAIL status badge:", e.message); process.exitCode = 1; }
+}
+
 setTimeout(() => console.log("FRONTEND HARNESS DONE"), 300);

@@ -1,0 +1,14 @@
+﻿knowledge_base/
+storage/
+venv/
+.git/
+.vercel/
+.pytest_cache/
+__pycache__/
+*.pyc
+*.log
+.env
+.env.*
+app.py.backup
+cookies.txt
+s.txt
