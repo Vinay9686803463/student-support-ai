@@ -80,7 +80,7 @@ REQUIRED = [
     ("BCS508", "Environmental Studies and E-Waste Management", 5),
 ]
 
-WEBTECH_CODE = "BCSL504"
+WEBTECH_CODE = "BCS504"
 WEBTECH_FILE = "Web Technology Programs.pdf"
 
 EXCLUDED = frozenset({"BCS515x", "BNSK559", "BPEK559", "BCS586"})

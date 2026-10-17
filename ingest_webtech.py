@@ -1,4 +1,4 @@
-"""Ingest the single Web Technology PDF under the existing BCSL504
+"""Ingest the single Web Technology PDF under the existing BCS504
 subject (Web Technology Lab). ONE document, no module structure."""
 import os
 import shutil
@@ -17,7 +17,7 @@ if not downloads.is_dir():
     downloads = Path.home() / "Downloads"
 
 FILENAME = "Web Technology Programs.pdf"
-CODE = "BCSL504"
+CODE = "BCS504"
 NAME = "Web Technology Lab"
 
 src = downloads / FILENAME

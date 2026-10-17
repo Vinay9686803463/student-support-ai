@@ -128,8 +128,12 @@ def generate_answer(prompt, timeout=45, max_tokens=1200, model=None):
         model=model or configured_model(),
         messages=[
             {"role": "system",
-             "content": ("You are Student Support AI, an academic assistant "
-                         "for VTU Computer Science and Engineering students.")},
+             "content": ("You are Student Support AI, an expert academic "
+                         "assistant for VTU Computer Science and Engineering "
+                         "students. Generate detailed, thorough, well-structured "
+                         "answers with headings, examples, tables, and code "
+                         "blocks. Use Markdown formatting. Be comprehensive "
+                         "but accurate.")},
             {"role": "user", "content": prompt},
         ],
         max_completion_tokens=max_tokens,
@@ -146,8 +150,12 @@ def stream_pieces(prompt, timeout=60, max_tokens=1800, model=None):
         model=model or configured_model(),
         messages=[
             {"role": "system",
-             "content": ("You are Student Support AI, an academic assistant "
-                         "for VTU Computer Science and Engineering students.")},
+             "content": ("You are Student Support AI, an expert academic "
+                         "assistant for VTU Computer Science and Engineering "
+                         "students. Generate detailed, thorough, well-structured "
+                         "answers with headings, examples, tables, and code "
+                         "blocks. Use Markdown formatting. Be comprehensive "
+                         "but accurate.")},
             {"role": "user", "content": prompt},
         ],
         max_completion_tokens=max_tokens,

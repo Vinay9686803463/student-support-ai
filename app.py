@@ -160,7 +160,6 @@ with app.app_context():
 def provider_diagnostics():
     """Check AI provider configuration without exposing secrets."""
     import importlib.util
-    import re
 
     report = {
         "env_file": str(_PROJECT_ROOT / ".env"),
@@ -187,8 +186,21 @@ def provider_diagnostics():
             ).strip()
 
             report["key_present"] = bool(key)
+            # Plausibility only (length + known placeholders): API
+            # keys are long opaque strings and their prefixes vary,
+            # so no AIza-style prefix is asserted here. A previous
+            # AIza-only check wrongly flagged a working key. Real
+            # authentication is proven by an actual API call, whose
+            # classified result the chat path reports honestly.
             report["key_format_ok"] = bool(
-                re.fullmatch(r"AIza[0-9A-Za-z_-]{30,}", key)
+                key
+                and key.upper() not in {
+                    "YOUR_API_KEY_HERE",
+                    "REPLACE-ME",
+                    "REPLACE_ME",
+                    "NONE",
+                }
+                and len(key) >= 20
             )
             report["model"] = (
                 os.getenv("GEMINI_MODEL") or "gemini-2.5-flash"
@@ -248,8 +260,9 @@ print(f"  key present    : {_diag['key_present']}")
 print(f"  SDK installed  : {_diag['sdk_ok']}")
 print(f"  ready          : {_diag['ready']}")
 if _diag.get("key_format_ok") is False and _diag["provider"] == "gemini":
-    print("  ! GOOGLE_GENERATIVE_AI_API_KEY has a wrong format:")
-    print("    - AI Studio keys start with AIza; re-paste the key.")
+    print("  ! GOOGLE_GENERATIVE_AI_API_KEY looks unset or invalid:")
+    print("    - paste a real key from https://aistudio.google.com/apikey")
+    print("      into .env (any current key format is accepted).")
 if not _diag["ready"]:
     print("  ! AI generation will fall back until this is fixed:")
     if not _diag["env_file_exists"]:
@@ -908,11 +921,132 @@ def chat():
 # CHAT API (offline study assistant, no API key needed)
 # =========================================================
 
+# How many starter suggestions the chat page shows per load.
+SUGGESTION_COUNT = 4
+
+
+@app.route("/api/chat/suggestions", methods=["GET"])
+@login_required
+def api_chat_suggestions():
+    """Starter question suggestions for the chat page.
+
+    Derived from the real subjects table: only subjects whose rows say
+    they belong to the student's semester (branch + scheme) qualify, so
+    elective/PE placeholders filtered out of the UI never surface here
+    either. When the page carries a subject context (subject deep
+    links), that subject's questions come first; otherwise the load is
+    a round-robin mixture across ALL supported semester subjects, and
+    it rotates across page loads (random shuffle per request) so the
+    same four chips don't repeat forever.
+    """
+    user = get_current_user()
+
+    data = request.args
+    try:
+        semester = int(data.get("semester", user["current_semester"]))
+    except (TypeError, ValueError):
+        semester = user["current_semester"]
+    if semester not in (1, 2, 3, 4, 5, 6, 7, 8):
+        semester = user["current_semester"]
+
+    requested_code = (data.get("subject_code") or "").strip().upper()
+
+    try:
+        rows = db.session.execute(
+            text("""
+                SELECT q.question, s.subject_code
+                FROM questions q
+                JOIN subjects s ON s.id = q.subject_id
+                WHERE s.branch = :branch
+                  AND s.scheme = :scheme
+                  AND s.semester = :semester
+                ORDER BY s.subject_code ASC, q.id ASC
+            """),
+            {
+                "branch": user["branch"],
+                "scheme": user["scheme"],
+                "semester": semester,
+            }
+        ).mappings().all()
+    except Exception:
+        db.session.rollback()
+        rows = []
+
+    by_code = {}
+    for row in rows:
+        code = row["subject_code"]
+        question = (row["question"] or "").strip()
+        if code and question:
+            by_code.setdefault(code, []).append(question)
+
+    codes = sorted(by_code)
+    mixture = False
+    if requested_code:
+        # The requested subject is always tried first; if it has no
+        # question rows we fall through to the other semester subjects
+        # rather than showing nothing (or inventing questions). Codes
+        # with no DB rows at all are dropped (can't invent questions).
+        subject_codes = ([requested_code] if requested_code in by_code
+                         else [])
+        subject_codes += [c for c in codes
+                          if c != requested_code and c in by_code]
+    else:
+        subject_codes = [c for c in codes if c in by_code]
+        mixture = True
+        # Shuffle subject order so no single subject (e.g. SEPM/BCS501,
+        # which sorts first alphabetically) always claims the first slot.
+        import random as _subj_random
+        _subj_random.shuffle(subject_codes)
+
+    suggestions = []
+    if mixture:
+        # Vary across page loads: shuffle each subject's pool, then
+        # pick round-robin across every supported subject so one
+        # subject (e.g. Software Engineering) can never dominate.
+        import random as _random
+        pools = {c: list(by_code[c]) for c in subject_codes}
+        for pool in pools.values():
+            _random.shuffle(pool)
+        while len(suggestions) < SUGGESTION_COUNT:
+            any_added = False
+            for code in subject_codes:
+                if len(suggestions) >= SUGGESTION_COUNT:
+                    break
+                if pools.get(code):
+                    suggestions.append((code, pools[code].pop()))
+                    any_added = True
+            if not any_added:
+                break
+    else:
+        pools = {c: list(by_code[c]) for c in subject_codes}
+        import random as _random
+        for pool in pools.values():
+            _random.shuffle(pool)
+        for code in subject_codes:
+            for question in pools.get(code, []):
+                if len(suggestions) >= SUGGESTION_COUNT:
+                    break
+                suggestions.append((code, question))
+            if len(suggestions) >= SUGGESTION_COUNT:
+                break
+
+    return {
+        "semester": semester,
+        "subjects": subject_codes,
+        "subject_code": requested_code if requested_code else None,
+        "as_mix": mixture,
+        "suggestions": [
+            {"text": question, "subject_code": code}
+            for code, question in suggestions
+        ],
+    }
+
+
 @app.route("/api/chat", methods=["POST"])
 @login_required
 def api_chat():
 
-    from utils.rag_ai import answer_with_rag
+    from utils.rag_ai import answer_with_rag, generate_followup_suggestions
     from utils.ai import generate_answer, gemini_available
 
     user = get_current_user()
@@ -980,6 +1114,7 @@ def api_chat():
             subject_code=rag_subject,
             module_number=rag_module,
             mode=mode,
+            history=data.get("history"),
         )
 
         answer = rag_result.get("answer", "")
@@ -1008,6 +1143,9 @@ def api_chat():
                 "mode": rag_result.get("mode", mode),
                 "latency_ms": rag_result.get("latency_ms", 0),
                 "cached": rag_result.get("cached", False),
+                "suggestions": rag_result.get("suggestions") or [],
+                "has_general_explanation": rag_result.get(
+                    "has_general_explanation", False),
             }
 
     except Exception as rag_error:
@@ -1086,7 +1224,8 @@ def api_chat():
                 "name": user["name"],
                 "subjects": subjects_ctx,
                 "questions": questions_ctx,
-                "resources": resources_ctx
+                "resources": resources_ctx,
+                "history": data.get("history"),
             }
         )
         # Label honestly: generate_answer's only live-AI tier is
@@ -1111,7 +1250,10 @@ def api_chat():
         )
         engine = "offline"
 
-    return {"reply": reply, "answer": reply, "sources": [], "used_rag": False, "used_ai": False, "engine": engine}
+    # Offline/fallback answers: attach topic-based suggestions too.
+    from utils.rag_ai import _offline_general_explanation
+    _has_general = _offline_general_explanation(message) is not None
+    return {"reply": reply, "answer": reply, "sources": [], "used_rag": False, "used_ai": False, "engine": engine, "suggestions": generate_followup_suggestions(message, reply), "has_general_explanation": _has_general}
 
 
 # =========================================================
@@ -1186,6 +1328,7 @@ def api_chat_stream():
                 subject_code=rag_subject,
                 module_number=rag_module,
                 mode=mode,
+                history=data.get("history"),
             ):
                 yield f"event: {item['event']}\ndata: {_json.dumps(item['data'])}\n\n"
         except GeneratorExit:
@@ -1319,12 +1462,6 @@ def subjects():
         else:
             core_subjects.append(subject_row)
 
-    # My Academic Journey scope: the Professional Elective section is
-    # hidden from the 5th Semester UI only. Database rows are untouched;
-    # an empty list keeps the template's conditional section from
-    # rendering. All other 5th Semester content is unchanged.
-    professional_subjects = []
-
     return render_template(
         "subjects.html",
         user=user,
@@ -1336,6 +1473,7 @@ def subjects():
             len(core_subjects)
             + len(alternative_subjects)
             + len(elective_subjects)
+            + len(professional_subjects)
         ),
         semester=selected_semester
     )
@@ -1580,10 +1718,10 @@ def subject_detail(subject_code):
                 for i in range(1, 6)
             ]
 
-    # Web Technology exception (BCSL504): single-file subject, no modules.
+    # Web Technology exception (BCS504): single-file subject, no modules.
     # Its "Web Technology Programs.pdf" is rendered in the Study Material
     # section as one unnumbered file; the Units grid stays empty.
-    if subject.get("code") == "BCSL504":
+    if subject.get("code") == "BCS504":
         unit_cards = []
 
     try:
@@ -1757,7 +1895,7 @@ def subject_detail(subject_code):
             )
     # Web Technology exception: always render its single PDF as one
     # unnumbered file, never as Module 1-5 (even if questions exist).
-    elif subject.get("code") == "BCSL504" and doc_rows:
+    elif subject.get("code") == "BCS504" and doc_rows:
         only_row = doc_rows[0]
         only_filename = (
             only_row["original_filename"]

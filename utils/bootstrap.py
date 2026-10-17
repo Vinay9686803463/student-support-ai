@@ -84,7 +84,7 @@ DEFAULT_SUBJECTS = [
     ("BCS503", "Theory of Computation"),
     ("BCS508", "Environmental Studies and E-Waste Management"),
     ("BCS515x", "Professional Elective Course"),
-    ("BCSL504", "Web Technology Lab"),
+    ("BCS504", "Web Technology Lab"),
     ("BNSK559", "National Service Scheme (NSS)"),
     ("BPEK559", "Physical Education (PE) (Sports and Athletics)"),
     ("BRMK557", "Research Methodology and IPR"),
@@ -240,6 +240,16 @@ STUDY_MATERIALS = {
         ("Lab Manual Engineering Maths 2 VTU.pdf", 5),
         ("PDFGallery_20250528_111409.pdf", 6),
         ("Sealed-E-version-Mathematics-Handbook-for-I-II-Semester-22-Scheme.pdf", 7),
+    ],
+    # Semester 5 - Environmental Studies and E-Waste Management. Files
+    # live under knowledge_base/BCS508/module1..module5/, matching the
+    # per-module convention used by other subjects (e.g. BCS402).
+    "BCS508": [
+        ("EVS-BCS508 Mod1@azdocuments.in.pdf", 1, "module1"),
+        ("EVS-BCS508 Mod2@azdocuments.in.pdf", 2, "module2"),
+        ("EVS-BCS508 Mod3@azdocuments.in.pdf", 3, "module3"),
+        ("EVS-BCS508 Mod4@azdocuments.in.pdf", 4, "module4"),
+        ("EVS-BCS508 Mod5@azdocuments.in.pdf", 5, "module5"),
     ],
     # Java files requested but NOT listed (all verified absent from
     # Downloads, including subfolders): '22PLC13cset1.pdf',
@@ -975,6 +985,17 @@ def ensure_study_materials():
                 print(f"  ! unsupported type, skipping: {_safename(filename)}")
                 continue
             try:
+                subject_name = names[code]
+            except KeyError:
+                # Non-canonical subjects (e.g. BCS508) are not in
+                # CANONICAL_SUBJECTS; read the name from the subjects
+                # table instead of skipping their materials.
+                subject_name = db.session.execute(
+                    text("SELECT subject_name FROM subjects "
+                         "WHERE subject_code = :c"),
+                    {"c": code},
+                ).scalar() or code
+            try:
                 db.session.execute(
                     text("""
                         INSERT INTO knowledge_documents
@@ -986,7 +1007,7 @@ def ensure_study_materials():
                     """),
                     {
                         "c": code,
-                        "n": names[code],
+                        "n": subject_name,
                         "m": module_number,
                         "mt": module_title,
                         "t": Path(filename).stem,

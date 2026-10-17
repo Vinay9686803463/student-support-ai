@@ -137,7 +137,7 @@
 
         <section class="section">
 
-            {% if subjects or alternatives or electives or professional_electives %}
+            {% if subjects or alternatives or electives %}
 
                 {% if subjects %}
                 <div class="subjects-grid">
@@ -298,60 +298,8 @@
                 {% endif %}
 
 
-                {% if professional_electives %}
-
-                <div class="section-heading" style="margin-top: 2.5rem;">
-                    <div>
-                        <h2>Professional Elective</h2>
-                        <p>Choose one professional elective from the available options.</p>
-                    </div>
-                </div>
-
-                <div class="subjects-grid">
-
-                    {% for subject in professional_electives %}
-
-                        <div class="subject-card">
-
-                            <div class="subject-card-top">
-
-                                <div class="subject-icon">
-                                    {{ subject.icon or "📚" }}
-                                </div>
-
-                                <span class="subject-code">
-                                    {{ subject.code }}
-                                </span>
-
-                            </div>
-
-                            <h3>
-                                {{ subject.name }}
-                            </h3>
-
-                            <p>
-                                {{ subject.description or "Professional elective subject. Choose one option from this group." }}
-                            </p>
-
-                            <div class="subject-info">
-                                <span>📚 {{ subject.credits or 4 }} Credits</span>
-                                <span>🎓 Sem {{ subject.semester }}</span>
-                            </div>
-
-                            <a
-                                href="{{ url_for('subject_detail', subject_code=subject.code, semester=semester) }}"
-                                class="subject-button"
-                            >
-                                View Subject →
-                            </a>
-
-                        </div>
-
-                    {% endfor %}
-
-                </div>
-
-                {% endif %}
+                {# Professional Elective section removed per user request.
+                   BCS515C (Unix System Programming) moved to regular subjects. #}
 
 
             {% else %}

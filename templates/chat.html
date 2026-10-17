@@ -8,6 +8,8 @@
 
     <link rel="stylesheet"
           href="{{ url_for('static', filename='css/style.css') }}">
+    <link rel="stylesheet"
+          href="{{ url_for('static', filename='css/chat.css') }}">
 </head>
 
 <body>
@@ -202,7 +204,7 @@
 
                     <p>Try asking:</p>
 
-                    <div class="suggestions">
+                    <div class="suggestions" id="chatSuggestions">
 
                         <button type="button" onclick="askQuestion(this.innerText)">
                             Explain agile vs waterfall models

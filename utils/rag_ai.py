@@ -1,4 +1,5 @@
 import os
+import re
 import threading
 import time
 
@@ -16,8 +17,8 @@ load_dotenv()
 # Full grounded answers take ~15-30s to generate; budgets reflect
 # measured latency (fast streams, so time-to-first-token stays low).
 MODE_TIMEOUTS = {
-    "fast": 45,
-    "detailed": 120,
+    "fast": 60,
+    "detailed": 180,
 }
 
 
@@ -134,17 +135,14 @@ def _record_provider_error(code, model=None):
 
 
 _DEFAULT_GEMINI_MODELS = (
-    # Verified live against the project API key (each tested with a
-    # real minimal generation): gemini-3.5-flash and gemini-3.6-flash
-    # both return real answers (~3s) and are tried in that order.
-    # gemini-3.7-flash and gemini-3.8-flash consistently return
-    # server_error with this key although listed by the models endpoint,
-    # and 1.5/2.0/2.5-flash return 404 "no longer available" (2.5
-    # is not listed at all). Never re-add an untested model first:
-    # every chat would pay its failure latency before reaching a
-    # working model.
-    "gemini-3.5-flash",
+    # Verified live against the project API key (Oct 2026):
+    # gemini-3.5-flash-lite has available quota and returns
+    # detailed answers. The others may be rate-limited (429).
+    "gemini-3.5-flash-lite",
+    "gemini-3.7-flash",
     "gemini-3.6-flash",
+    "gemini-3.8-flash",
+    "gemini-3.5-flash",
 )
 
 
@@ -240,9 +238,7 @@ def _call_gemini(prompt, timeout=30):
 
     for model_name in _model_candidates():
         tried.append(model_name)
-
         try:
-
             response = client.models.generate_content(
                 model=model_name,
                 contents=prompt,
@@ -264,12 +260,14 @@ def _call_gemini(prompt, timeout=30):
             _record_provider_error(code, model=model_name)
             if code != "model_not_found":
                 only_not_found = False
+            # Stop immediately on auth errors - trying more models
+            # with the same invalid key is pointless.
+            if code in ("auth_invalid", "auth_missing"):
+                return None
             continue
 
-    # Every explicitly configured model came back model_not_found
-    # (e.g. a retired name left in GEMINI_MODEL): recover with the
-    # verified defaults instead of giving up with
-    # provider_not_configured. Any other error is reported as-is.
+    # Same retired-model recovery as before: only when every
+    # explicitly configured model said model_not_found.
     if only_not_found:
         for model_name in _defaults_after(tried):
             try:
@@ -282,9 +280,7 @@ def _call_gemini(prompt, timeout=30):
                     or ""
                 ).strip()
                 if answer:
-                    print(
-                        f"GEMINI OK model={model_name} chars={len(answer)}"
-                    )
+                    print(f"GEMINI OK model={model_name} chars={len(answer)}")
                     return answer
             except Exception as error:
                 _record_provider_error(
@@ -325,6 +321,9 @@ def _stream_gemini(prompt, timeout=30):
             _record_provider_error(code, model=model_name)
             if code != "model_not_found":
                 only_not_found = False
+            # Stop immediately on auth errors.
+            if code in ("auth_invalid", "auth_missing"):
+                return
             continue
     # Same retired-model recovery as _call_gemini: only when every
     # explicitly configured model said model_not_found.
@@ -422,36 +421,58 @@ def _compose_no_provider_answer(question, results,
                                 provider=None, error_code=None):
     """User-safe answer text when no language model is reachable.
 
-    The user sees a short, friendly notice plus clearly labeled
+    When a general explanation is available from the built-in study
+    bank, return it as the answer (clearly labeled as a general
+    explanation) without the "temporarily unavailable" notice or raw
+    excerpts.  Otherwise show a friendly notice plus clearly labeled
     study-bank content - never raw error codes, model names, setup
     instructions, or stack traces. Those stay in the backend log
     (see the AI UNAVAILABLE print at the call site) and in the
     machine-readable ``error_code`` field of the response.
     """
-    parts = [
-        "The AI assistant is temporarily unavailable. "
-        "Please try again shortly.\n"
-    ]
     general = _offline_general_explanation(question)
     if general:
-        parts.append(
+        # A valid fallback answer exists: present it cleanly without
+        # the scary "temporarily unavailable" notice or raw excerpts.
+        return (
             "General explanation (from the built-in study bank, "
             "not from your documents):\n\n"
             + general
         )
-    else:
+    # No general explanation available: be honest and point to excerpts.
+    parts = [
+        "The AI assistant is temporarily unavailable. "
+        "Please try again shortly.\n"
+    ]
+    if results:
         parts.append(
             "The retrieved passages below may still help. If they do "
             "not cover your question, try rephrasing it or asking "
             "about a specific topic (e.g. 'Explain OSI layers')."
         )
-    parts.append(
-        "\nRelevant excerpts from your study materials "
-        "(for reference, not a complete answer):"
-    )
-    for index, result in enumerate(results, start=1):
-        parts.append(_excerpt_block(index, result))
+        parts.append(
+            "\nRelevant excerpts from your study materials "
+            "(for reference, not a complete answer):"
+        )
+        for index, result in enumerate(results, start=1):
+            parts.append(_excerpt_block(index, result))
+    else:
+        parts.append(
+            "I couldn't find relevant material in the knowledge base "
+            "for that question. Try rephrasing, or ask about a "
+            "specific topic (e.g. 'Explain OSI layers')."
+        )
     return "\n".join(parts)
+
+
+def _log_rag_timing(label, started):
+    """One backend timing line per answer.
+
+    Label carries only the answer kind, provider name, error code,
+    and counts - never prompts, questions, keys, or document text.
+    """
+    ms = int((time.monotonic() - started) * 1000)
+    print(f"RAG TIMING {label} ms={ms}")
 
 
 def answer_with_rag(
@@ -460,6 +481,7 @@ def answer_with_rag(
     module_number=None,
     limit=5,
     mode="detailed",
+    history=None,
 ):
     """
     Main RAG-powered answer function.
@@ -520,6 +542,7 @@ def answer_with_rag(
         cached = dict(cached)
         cached["cached"] = True
         cached["latency_ms"] = int((time.monotonic() - started) * 1000)
+        _log_rag_timing("kind=cached", started)
         return cached
 
     if limit in (None, 5):
@@ -533,13 +556,14 @@ def answer_with_rag(
         module_number=module_number,
         limit=limit,
         max_chars_per_source=MODE_CONTEXT_CHARS[mode],
+        history=history,
     )
 
     results = rag_data["results"]
     prompt = rag_data["prompt"]
 
     timeout = MODE_TIMEOUTS[mode]
-    max_tokens = {"fast": 800, "detailed": 1800}[mode]
+    max_tokens = {"fast": 1200, "detailed": 3000}[mode]
 
     provider = active_provider()
 
@@ -567,11 +591,15 @@ def answer_with_rag(
                     "mode": mode,
                     "latency_ms": int((time.monotonic() - started) * 1000),
                     "cached": False,
+                    "suggestions": generate_followup_suggestions(question, answer),
                 }
                 cache_put(
                     cache_key(question, subject_code, module_number, mode, kb_version),
                     response,
                 )
+                _log_rag_timing(
+                    "kind=ai_generated provider=" + response["provider"],
+                    started)
                 return response
 
         except Exception as error:
@@ -605,11 +633,15 @@ def answer_with_rag(
                     "mode": mode,
                     "latency_ms": int((time.monotonic() - started) * 1000),
                     "cached": False,
+                    "suggestions": generate_followup_suggestions(question, answer),
                 }
                 cache_put(
                     cache_key(question, subject_code, module_number, mode, kb_version),
                     response,
                 )
+                _log_rag_timing(
+                    "kind=ai_generated provider=" + response["provider"],
+                    started)
                 return response
 
         except Exception as error:
@@ -640,11 +672,15 @@ def answer_with_rag(
                     "mode": mode,
                     "latency_ms": int((time.monotonic() - started) * 1000),
                     "cached": False,
+                    "suggestions": generate_followup_suggestions(question, answer),
                 }
                 cache_put(
                     cache_key(question, subject_code, module_number, mode, kb_version),
                     response,
                 )
+                _log_rag_timing(
+                    "kind=ai_generated provider=" + response["provider"],
+                    started)
                 return response
 
         except Exception as error:
@@ -672,6 +708,10 @@ def answer_with_rag(
             question, results, provider=effective_provider,
             error_code=error_code)
 
+        # Determine if a general explanation was provided (so the
+        # frontend can avoid showing "AI temporarily unavailable").
+        _has_general = _offline_general_explanation(question) is not None
+
         response = {
             "answer": fallback_answer,
             "sources": results,
@@ -683,12 +723,19 @@ def answer_with_rag(
             "mode": mode,
             "latency_ms": int((time.monotonic() - started) * 1000),
             "cached": False,
+            "suggestions": generate_followup_suggestions(question, fallback_answer),
+            "has_general_explanation": _has_general,
         }
         # Deliberately NOT cached: a failed answer must never be
         # re-served for hours (6h TTL) after the provider recovers.
         # Success responses above are cached; failures always retry.
+        _log_rag_timing(
+            f"kind=fallback error={error_code} "
+            f"results={len(results)}",
+            started)
         return response
 
+    _log_rag_timing("kind=no_results", started)
     return {
         "answer": (
             "I couldn't find relevant material "
@@ -743,7 +790,7 @@ def current_kb_version():
 
 
 def stream_answer(question, subject_code=None, module_number=None,
-                  mode="detailed", limit=None):
+                  mode="detailed", limit=None, history=None):
     """Yield SSE-ready dicts: context event, answer pieces, done event.
 
     Uses Gemini streaming when configured; otherwise streams the
@@ -761,6 +808,7 @@ def stream_answer(question, subject_code=None, module_number=None,
         module_number=module_number,
         limit=limit,
         max_chars_per_source=MODE_CONTEXT_CHARS[mode],
+        history=history,
     )
     results = rag_data["results"]
     prompt = rag_data["prompt"]
@@ -768,10 +816,11 @@ def stream_answer(question, subject_code=None, module_number=None,
     yield {"event": "sources", "data": {"sources": results}}
 
     timeout = MODE_TIMEOUTS[mode]
-    max_tokens = {"fast": 800, "detailed": 1800}[mode]
+    max_tokens = {"fast": 1200, "detailed": 3000}[mode]
     provider = active_provider()
     streamed = False
     stream_provider = None
+    full_text_parts = []  # accumulated answer text (for suggestions)
 
     from utils import ollama_provider as _ollama
     from utils import openai_provider as _openai
@@ -783,6 +832,7 @@ def stream_answer(question, subject_code=None, module_number=None,
             ):
                 streamed = True
                 stream_provider = "openai"
+                full_text_parts.append(piece)
                 yield {"event": "token", "data": {"text": piece}}
         except Exception as stream_error:
             _record_provider_error(
@@ -796,6 +846,7 @@ def stream_answer(question, subject_code=None, module_number=None,
             ):
                 streamed = True
                 stream_provider = "ollama"
+                full_text_parts.append(piece)
                 yield {"event": "token", "data": {"text": piece}}
         except Exception as stream_error:
             _record_provider_error(
@@ -807,6 +858,7 @@ def stream_answer(question, subject_code=None, module_number=None,
             for piece in _stream_gemini(prompt, timeout=timeout):
                 streamed = True
                 stream_provider = "gemini"
+                full_text_parts.append(piece)
                 yield {"event": "token", "data": {"text": piece}}
         except Exception as stream_error:
             _record_provider_error(_classify_provider_error(stream_error))
@@ -829,22 +881,224 @@ def stream_answer(question, subject_code=None, module_number=None,
                   "Try rephrasing, or ask about a specific topic "
                   "(e.g. 'Explain OSI layers').")
         )
+        full_text_parts.append(composed)
         for start in range(0, len(composed), 1200):
             yield {"event": "token",
                    "data": {"text": composed[start:start + 1200]}}
 
-    yield {"event": "done", "data": {
+    full_answer = "".join(full_text_parts)
+    answer_kind = ("ai_generated" if streamed else
+                   ("fallback_excerpts" if results else "no_results"))
+
+    done_data = {
         "used_rag": bool(results),
         "used_ai": streamed,
         "provider": stream_provider,
-        "answer_kind": ("ai_generated" if streamed else
-                        ("fallback_excerpts" if results else "no_results")),
+        "answer_kind": answer_kind,
         "error_code": None if streamed else (
             get_last_provider_error().get("code") or "provider_not_configured"
         ) if results else None,
         "mode": mode,
         "latency_ms": int((time.monotonic() - started) * 1000),
-    }}
+    }
+
+    # Attach suggestions for every non-empty answer. For successful AI
+    # answers they are topic-specific; for fallback answers they are
+    # generic follow-ups so the chat stays useful even when the
+    # provider is unavailable. Skip only for empty/no-results answers.
+    if full_answer.strip():
+        done_data["suggestions"] = generate_followup_suggestions(
+            question, full_answer)
+        # Tell the frontend whether a general explanation was provided
+        # so it can avoid showing "AI temporarily unavailable".
+        done_data["has_general_explanation"] = (
+            _offline_general_explanation(question) is not None
+            and not streamed
+        )
+
+    yield {"event": "done", "data": done_data}
+
+
+# ---------------------------------------------------------------------------
+# Dynamic follow-up suggestions
+# ---------------------------------------------------------------------------
+
+# Each entry: (keywords that match the question/answer, [suggestions]).
+# Used as a lightweight, on-topic fallback when the AI provider does not
+# return structured suggestions alongside its answer. Suggestion sets are
+# drawn from the examples in the product requirements and cover the most
+# common VTU CSE topics.
+FOLLOWUP_TOPICS = (
+    (
+        ["halting", "undecidable", "decidable", "computability",
+         "turing machine", "reduction", "recursively enumerable"],
+        [
+            "Explain decidable and undecidable problems.",
+            "State the pumping lemma for regular languages.",
+            "Explain the difference between DFA and NFA.",
+            "Give an example of a reduction used to prove undecidability.",
+        ],
+    ),
+    (
+        ["csma", "cdma", "access control", "medium access", "ethernet",
+         "collision", "carrier sense", "mac protocol", "aluha", "slotted"],
+        [
+            "Explain CSMA/CD and CSMA/CA access methods.",
+            "What is the difference between CSMA/CD and CSMA/CA?",
+            "Explain the binary exponential backoff algorithm.",
+            "How does Ethernet handle collisions?",
+        ],
+    ),
+    (
+        ["waterfall", "agile", "scrum", "spiral", "sdlc",
+         "software engineering", "development model"],
+        [
+            "What are the advantages and disadvantages of Waterfall?",
+            "Explain the phases of the Waterfall Model with an example.",
+            "Compare Waterfall and Agile in a table.",
+        ],
+    ),
+    (
+        ["osi", "layers of", "reference model", "seven layers", "7 layers",
+         "physical layer", "data link", "network layer", "transport layer",
+         "session layer", "presentation layer", "application layer"],
+        [
+            "Explain the functions of each OSI layer.",
+            "What is the difference between TCP and UDP?",
+            "Give important OSI model exam questions.",
+        ],
+    ),
+    (
+        ["tcp", "udp", "tcp/ip", "tcp ip", "handshake", "datagram",
+         "transport layer"],
+        [
+            "Explain the TCP 3-way handshake with an example.",
+            "What is the difference between TCP and UDP?",
+            "When would you use UDP instead of TCP?",
+        ],
+    ),
+    (
+        ["dfa", "nfa", "finite automata", "automata", "epsilon",
+         "regular language", "pumping", "subset construction"],
+        [
+            "Convert an NFA into an equivalent DFA.",
+            "Explain epsilon transitions with an example.",
+            "Compare DFA and NFA in a table.",
+        ],
+    ),
+    (
+        ["normalization", "1nf", "2nf", "3nf", "bcnf",
+         "functional dependency", "database", "dbms"],
+        [
+            "What is the difference between 3NF and BCNF?",
+            "Explain normalization with an example.",
+            "What are transitive and partial dependencies?",
+        ],
+    ),
+    (
+        ["scheduling", "fcfs", "sjf", "round robin", "gantt",
+         "cpu scheduling", "waiting time", "process"],
+        [
+            "Explain Round Robin scheduling with a Gantt chart.",
+            "What is the difference between SJF and SRTF?",
+            "Compare CPU scheduling algorithms in a table.",
+        ],
+    ),
+    (
+        ["acid", "transaction", "isolation", "durability",
+         "atomicity", "consistency"],
+        [
+            "What are the ACID properties of a transaction?",
+            "Explain transaction isolation levels.",
+            "What is the difference between commit and rollback?",
+        ],
+    ),
+    (
+        ["computer network", "types of networks", "lan wan man",
+         "networking", "hub", "switch", "router"],
+        [
+            "What is the difference between LAN, MAN, and WAN?",
+            "Explain network devices: hub, switch, and router.",
+            "What is TCP/IP and how does it work?",
+        ],
+    ),
+    (
+        ["ip address", "subnet", "subnetting", "cidr", "ipv4",
+         "classful", "mask"],
+        [
+            "How does subnetting work with an example?",
+            "What is the difference between IPv4 and IPv6?",
+            "Explain CIDR notation with examples.",
+        ],
+    ),
+    (
+        ["testing", "black-box", "white box", "unit test",
+         "integration test", "boundary value", "software testing"],
+        [
+            "What is the difference between black-box and white-box testing?",
+            "Explain boundary value analysis with an example.",
+            "What are the levels of software testing?",
+        ],
+    ),
+    (
+        ["cocomo", "cost estimation", "effort estimation", "kloc",
+         "software cost"],
+        [
+            "What are the three COCOMO modes?",
+            "Explain COCOMO with a worked example.",
+            "What is the difference between basic and intermediate COCOMO?",
+        ],
+    ),
+)
+
+GENERAL_FOLLOWUPS = [
+    "Explain this topic with an example.",
+    "Give important exam questions on this topic.",
+    "Compare related concepts in a table.",
+]
+
+
+def _keyword_in_text(keyword, lowered):
+    """Match *keyword* in *lowered* text.
+
+    Short single-word keywords (like "osi", "tcp", "dfa") are matched
+    with word boundaries so they don't fire inside unrelated words
+    ("decomposing" contains "osi", "process" contains... well, not
+    "osi", but the point stands). Multi-word phrases and longer
+    keywords keep the simpler substring match.
+    """
+    keyword = (keyword or "").strip().lower()
+    if not keyword:
+        return False
+    if " " in keyword:
+        return keyword in lowered
+    if len(keyword) < 5:
+        return bool(re.search(
+            r"(?<![a-z0-9])" + re.escape(keyword) + r"(?![a-z0-9])",
+            lowered,
+        ))
+    return keyword in lowered
+
+
+def _match_followup_topic(text):
+    """Return a suggestion list for *text* when a topic keyword matches."""
+    lowered = (text or "").lower()
+    for _keywords, suggestions in FOLLOWUP_TOPICS:
+        if any(_keyword_in_text(k, lowered) for k in _keywords):
+            return suggestions
+    return None
+
+
+def generate_followup_suggestions(question, answer):
+    """Return 3-4 on-topic follow-up suggestions for *question* + *answer*.
+
+    Falls back to generic suggestions when no topic matches. Never raises.
+    """
+    combined = f"{question or ''} {answer or ''}"
+    specific = _match_followup_topic(combined)
+    if specific:
+        return list(specific[:4])
+    return list(GENERAL_FOLLOWUPS[:3])
 
 
 def format_sources(results):

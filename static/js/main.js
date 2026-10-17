@@ -9,9 +9,12 @@
         }, 5000);
     });
 
-    // Apply saved dark mode early on every page
+    // Apply saved theme early on every page. Default to dark mode
+    // unless the user explicitly chose light mode, so all browsers
+    // render the same intended dark theme regardless of their
+    // localStorage state.
     try {
-        if (localStorage.getItem("studentSupportDarkMode") === "true") {
+        if (localStorage.getItem("studentSupportDarkMode") !== "false") {
             document.body.classList.add("dark-mode");
         }
     } catch (e) { /* storage unavailable */ }

@@ -12,20 +12,22 @@
    ============================================================ */
 
 :root {
-    --bg: #f6f8fc;
-    --card: #ffffff;
-    --text: #0f172a;
-    --muted: #64748b;
-    --border: #e5e9f2;
+    --bg: #000000;
+    --card: #111111;
+    --text: #ffffff;
+    --muted: #94a3b8;
+    --border: #222222;
 
-    --primary: #2563eb;
-    --primary-dark: #1d4ed8;
+    --primary: #1919FF;
+    --primary-dark: #8064F8;
     --primary-light: #60a5fa;
+
+    --primary-gradient: linear-gradient(135deg, #1919FF, #8064F8);
 
     --success: #16a34a;
 
-    --shadow: 0 8px 25px rgba(16, 24, 40, 0.06);
-    --shadow-hover: 0 15px 35px rgba(16, 24, 40, 0.10);
+    --shadow: 0 8px 25px rgba(0, 0, 0, 0.3);
+    --shadow-hover: 0 15px 35px rgba(0, 0, 0, 0.4);
 }
 
 
@@ -491,27 +493,25 @@ select {
 
     padding: 12px 20px;
 
-    background: var(--primary);
+    background: var(--primary-gradient);
     color: #ffffff;
 
     border-radius: 10px;
+    border: none;
 
     font-size: 14px;
     font-weight: 700;
 
     transition:
-        background 0.2s ease,
         transform 0.2s ease,
         box-shadow 0.2s ease;
 }
 
 .primary-btn:hover {
-    background: var(--primary-dark);
-
     transform: translateY(-2px);
 
     box-shadow:
-        0 8px 20px rgba(37, 99, 235, 0.25);
+        0 8px 20px rgba(25, 25, 255, 0.35);
 }
 
 
@@ -1001,7 +1001,7 @@ button.semester-box.locked {
 
     border-radius: 10px;
 
-    background: var(--primary);
+    background: var(--primary-gradient);
 
     color: #ffffff;
 
@@ -1778,7 +1778,7 @@ button.semester-box.locked {
     max-width: 650px;
 }
 
-.message-content strong {
+.message-content > strong {
     display: block;
 
     margin-bottom: 5px;
@@ -1786,6 +1786,14 @@ button.semester-box.locked {
     color: var(--text);
 
     font-size: 12px;
+}
+
+/* Inline bold inside paragraphs/lists stays inline */
+.message-content p strong,
+.message-content li strong,
+.message-content li em {
+    display: inline;
+    margin-bottom: 0;
 }
 
 .message-content p {
@@ -1861,7 +1869,17 @@ button.semester-box.locked {
 
     font-size: 12px;
 
+    width: 100%;
+
     max-width: 100%;
+
+    table-layout: fixed;
+}
+
+.message-content-table {
+    overflow-x: auto;
+
+    margin: 8px 0;
 }
 
 .message-content th,
@@ -1871,6 +1889,26 @@ button.semester-box.locked {
     border: 1px solid var(--border);
 
     text-align: left;
+
+    overflow-wrap: anywhere;
+
+    word-break: break-word;
+}
+
+.message-content blockquote {
+    margin: 8px 0;
+
+    padding: 8px 12px;
+
+    border-left: 3px solid var(--primary-light);
+
+    background: var(--bg);
+
+    border-radius: 0 8px 8px 0;
+
+    font-size: 13px;
+
+    line-height: 1.6;
 }
 
 
@@ -1990,9 +2028,9 @@ button.semester-box.locked {
 
     padding: 8px 8px 8px 15px;
 
-    background: var(--bg);
+    background: var(--card);
 
-    border: 1px solid #dce3ee;
+    border: 1px solid var(--border);
 
     border-radius: 13px;
 
@@ -2000,7 +2038,9 @@ button.semester-box.locked {
 }
 
 .chat-input-box:focus-within {
+    /* Blue-purple gradient focus indicator matching the theme. */
     border-color: var(--primary);
+    box-shadow: 0 0 0 2px rgba(25, 25, 255, 0.2);
 }
 
 .chat-input-box textarea {
@@ -2039,7 +2079,7 @@ button.semester-box.locked {
 
     border-radius: 10px;
 
-    background: var(--primary);
+    background: var(--primary-gradient);
 
     color: #ffffff;
 
@@ -2051,7 +2091,7 @@ button.semester-box.locked {
 }
 
 .send-button:hover {
-    background: var(--primary-dark);
+    box-shadow: 0 4px 12px rgba(25, 25, 255, 0.35);
 
     transform: translateY(-1px);
 }
@@ -3134,7 +3174,7 @@ button.semester-box.locked {
 .resource-type {
     padding: 6px 10px;
     border-radius: 20px;
-    background: #f1f5f9;
+    background: var(--surface-2);
     color: var(--muted);
     font-size: 12px;
     font-weight: 600;
@@ -3688,9 +3728,9 @@ button.semester-box.locked {
 
 .dark-mode .auth-page {
     background:
-        radial-gradient(600px 400px at 15% 20%, rgba(99, 102, 241, 0.18), transparent 60%),
-        radial-gradient(700px 450px at 85% 80%, rgba(139, 92, 246, 0.16), transparent 60%),
-        #0b1120;
+        radial-gradient(600px 400px at 15% 20%, rgba(25, 25, 255, 0.12), transparent 60%),
+        radial-gradient(700px 450px at 85% 80%, rgba(128, 100, 248, 0.10), transparent 60%),
+        #000000;
 }
 
 .dark-mode .welcome-card,
@@ -3699,7 +3739,7 @@ button.semester-box.locked {
 .dark-mode .resources-hero,
 .dark-mode .notes-header,
 .dark-mode .semester-card.current {
-    background: linear-gradient(135deg, #1e293b 0%, var(--card) 100%);
+    background: linear-gradient(135deg, #111111 0%, var(--card) 100%);
 }
 
 .dark-mode .flash-message.success,
@@ -3725,21 +3765,30 @@ button.semester-box.locked {
 }
 
 .dark-mode {
-    --bg: #0f172a;
-    --card: #1e293b;
-    --text: #f1f5f9;
+    --bg: #000000;
+    --card: #111111;
+    --text: #ffffff;
     --muted: #94a3b8;
-    --border: #334155;
+    --border: #222222;
+
+    --primary: #1919FF;
+    --primary-dark: #8064F8;
+    --primary-light: #60a5fa;
+
+    --primary-gradient: linear-gradient(135deg, #1919FF, #8064F8);
+
+    --shadow: 0 8px 25px rgba(0, 0, 0, 0.3);
+    --shadow-hover: 0 15px 35px rgba(0, 0, 0, 0.4);
 }
 
 .dark-mode .settings-field input,
 .dark-mode .resources-toolbar select {
-    background: #0f172a;
+    background: var(--bg);
     color: var(--text);
 }
 
 .dark-mode .settings-field input[readonly] {
-    background: #172033;
+    background: var(--card);
 }
 
 .dark-mode .resource-info-card,
@@ -4349,16 +4398,16 @@ button.semester-box.locked {
 }
 
 .btn-primary {
-    background: var(--primary);
+    background: var(--primary-gradient);
     color: #ffffff;
-    border-color: var(--primary);
+    border: none;
 }
 
 .btn-primary:hover {
-    background: var(--primary-dark);
-    border-color: var(--primary-dark);
-
     transform: translateY(-1px);
+
+    box-shadow:
+        0 8px 20px rgba(25, 25, 255, 0.35);
 }
 
 .btn-secondary {
@@ -4648,19 +4697,19 @@ button.semester-box.locked {
    ============================================================ */
 
 :root {
-    --bg: #f1f5f9;
-    --card: #ffffff;
-    --surface: #ffffff;
-    --surface-2: #f8fafc;
-    --surface-hover: #eef2ff;
-    --text: #0f172a;
-    --text-muted: #64748b;
-    --muted: #64748b;
-    --border: #e2e8f0;
-    --primary: #4f46e5;
-    --primary-hover: #4338ca;
-    --primary-dark: #4338ca;
-    --primary-light: #818cf8;
+    --bg: #000000;
+    --card: #111111;
+    --surface: #111111;
+    --surface-2: #1a1a1a;
+    --surface-hover: #1a1a2e;
+    --text: #ffffff;
+    --text-muted: #94a3b8;
+    --muted: #94a3b8;
+    --border: #222222;
+    --primary: #1919FF;
+    --primary-hover: #8064F8;
+    --primary-dark: #8064F8;
+    --primary-light: #60a5fa;
     --accent: #8b5cf6;
     --success: #16a34a;
     --warning: #d97706;
@@ -4863,7 +4912,7 @@ h1, h2, h3 {
 .form-group input {
     background: var(--bg);
 
-    border-color: #e2e8f0;
+    border-color: var(--border);
 }
 
 .form-group input:focus {
@@ -5044,7 +5093,7 @@ textarea:focus-visible {
 
 .dark-mode .back-link,
 .dark-mode .back-subject-link {
-    background: #172033;
+    background: var(--card);
 
     border-color: var(--border);
 }
@@ -5136,7 +5185,7 @@ textarea:focus-visible {
 }
 
 .dark-mode .semester-box {
-    background: #172033;
+    background: var(--card);
 }
 
 .dark-mode .semester-box:hover {
@@ -5161,7 +5210,7 @@ button.semester-box.locked:hover {
 }
 
 .dark-mode button.semester-box.locked:hover {
-    background: #172033;
+    background: var(--card);
     border-color: var(--border);
     color: var(--muted);
     transform: none;

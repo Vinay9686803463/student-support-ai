@@ -14,13 +14,15 @@ SUBJECTS = [
     ("BCS501", "Software Engineering & Project Management", 5, "CSE", "2022"),
     ("BCS502", "Computer Networks", 5, "CSE", "2022"),
     ("BCS503", "Theory of Computation", 5, "CSE", "2022"),
+    ("BCS504", "Web Technology Lab", 5, "CSE", "2022"),
     ("BCS508", "Environmental Studies and E-Waste Management", 5, "CSE", "2022"),
     ("BCS515x", "Professional Elective Course", 5, "CSE", "2022"),
-    ("BCSL504", "Web Technology Lab", 5, "CSE", "2022"),
+    ("BCS586", "Mini Project", 5, "CSE", "2022"),
     ("BNSK559", "National Service Scheme (NSS)", 5, "CSE", "2022"),
     ("BPEK559", "Physical Education (PE) (Sports and Athletics)", 5, "CSE", "2022"),
     ("BRMK557", "Research Methodology and IPR", 5, "CSE", "2022"),
     ("BYOK559", "Yoga", 5, "CSE", "2022"),
+    ("BYOK659", "Yoga", 5, "CSE", "2022"),
 ]
 
 

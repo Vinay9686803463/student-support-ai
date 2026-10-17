@@ -224,4 +224,285 @@ const SSE_TOKEN = (t) => `event: token\ndata: {"text": ${JSON.stringify(t)}}\n\n
     } catch (e) { console.error("FAIL status badge:", e.message); process.exitCode = 1; }
 }
 
+// 6. Exact reported artifacts: glued bold, backslashed heading,
+//    entity-encoded text, backslashed emphasis.
+{
+    const { sandbox } = makeSandbox([]);
+    loadChat(sandbox);
+    try {
+        const out = vm.runInContext(`formatReply(${JSON.stringify(
+            "The**Waterfall Model**and Agile structures work.\n\\#### Sequential Phases of Waterfall:\nLearn &#x52;equirements and \\*sprints\\* planning."
+        )})`, sandbox);
+        assert.ok(out.includes("The <strong>Waterfall Model</strong> and"),
+            "bold spacing fixed, got: " + out);
+        assert.ok(out.includes("<h5>Sequential Phases of Waterfall:</h5>"),
+            "heading unescaped, got: " + out);
+        assert.ok(out.includes("Learn Requirements and"),
+            "entity decoded, got: " + out);
+        assert.ok(out.includes("<em>sprints</em>"),
+            "emphasis unescaped, got: " + out);
+        assert.ok(!out.includes("\\####") && !out.includes("\\*") &&
+            !out.includes("&#x") && !out.includes("**Waterfall"),
+            "no raw artifacts left, got: " + out);
+        console.log("PASS reported artifacts render cleanly");
+    } catch (e) { console.error("FAIL artifacts:", e.message); process.exitCode = 1; }
+}
+
+// 7. LaTeX and code examples survive untouched; no double conversion.
+{
+    const { sandbox } = makeSandbox([]);
+    loadChat(sandbox);
+    try {
+        const latex = "The formula is \\frac{a}{b} inline.";
+        const outLatex = vm.runInContext(`formatReply(${JSON.stringify(latex)})`, sandbox);
+        assert.ok(outLatex.includes("\\frac{a}{b}"),
+            "LaTeX preserved, got: " + outLatex);
+        const code = "Run `a**b** and \\n` now.";
+        const outCode = vm.runInContext(`formatReply(${JSON.stringify(code)})`, sandbox);
+        assert.ok(outCode.includes("<code>a**b** and \\n</code>"),
+            "code literal, got: " + outCode);
+        const fenced = "Example:\n```\nx = 1  # &#x52; stays\n```\ndone.";
+        const outFence = vm.runInContext(`formatReply(${JSON.stringify(fenced)})`, sandbox);
+        assert.ok(outFence.includes("<pre><code>") && outFence.includes("&#x52;") === false,
+            "fence kept as code, got: " + outFence);
+        const once = vm.runInContext(`formatReply("## Hi\\n\\nSome **bold** text.")`, sandbox);
+        const twice = vm.runInContext(
+            `formatReply(${JSON.stringify("## Hi")})`, sandbox);
+        assert.ok(!once.includes("<p><p>") && once.includes("<h3>Hi</h3>"),
+            "no nested paragraphs, got: " + once);
+        assert.ok(twice.includes("<h3>Hi</h3>"), "stable rerender");
+        console.log("PASS LaTeX/code preserved, no double conversion");
+    } catch (e) { console.error("FAIL latex/code:", e.message); process.exitCode = 1; }
+}
+
+// 8. Links render safely; dangerous schemes stay literal text.
+{
+    const { sandbox } = makeSandbox([]);
+    loadChat(sandbox);
+    try {
+        const out = vm.runInContext(`formatReply(${JSON.stringify(
+            "See [VTU site](https://vtu.ac.in) and [evil](javascript:alert(1)) for **details**."
+        )})`, sandbox);
+        assert.ok(out.includes('<a href="https://vtu.ac.in" target="_blank" rel="noopener">VTU site</a>'),
+            "safe link, got: " + out);
+        assert.ok(!out.includes("<a href=\"javascript:"),
+            "no javascript link, got: " + out);
+        assert.ok(out.includes("[evil](javascript:alert(1))"),
+            "rejected link stays literal, got: " + out);
+        assert.ok(out.includes("<strong>details</strong>"), "bold intact");
+        assert.ok(!out.includes("<script"), "no script tags");
+        console.log("PASS links safe, dangerous schemes rejected");
+    } catch (e) { console.error("FAIL links:", e.message); process.exitCode = 1; }
+}
+
+// 9. Blockquotes group; math notation untouched; entities decoded.
+{
+    const { sandbox } = makeSandbox([]);
+    loadChat(sandbox);
+    try {
+        const out = vm.runInContext(`formatReply(${JSON.stringify(
+            "> Agile welcomes change.\n> Sprints deliver increments.\n\nNext para.\n\n$E=mc^2$ and 3 * 4 = 12.\n\n&#x44;efining done."
+        )})`, sandbox);
+        assert.ok(out.includes("<blockquote>Agile welcomes change. Sprints deliver increments.</blockquote>"),
+            "grouped quote, got: " + out);
+        assert.ok(out.includes("$E=mc^2$") && out.includes("3 * 4 = 12"),
+            "math intact, got: " + out);
+        assert.ok(out.includes("Defining done."),
+            "entity decoded, got: " + out);
+        assert.ok(!out.includes("&#x"), "no raw entities");
+        console.log("PASS blockquote, math, entities");
+    } catch (e) { console.error("FAIL quote/math:", e.message); process.exitCode = 1; }
+}
+
+// 10. Wide tables keep parsable structure for the fixed layout.
+{
+    const { sandbox } = makeSandbox([]);
+    loadChat(sandbox);
+    try {
+        const out = vm.runInContext(`formatReply(${JSON.stringify(
+            "| A | B |\n|---|---|\n| https://example.com/very/long/path/no/breaks/here | 2 |"
+        )})`, sandbox);
+        assert.ok(out.includes("<table>") && out.includes("<th>A</th>") &&
+            out.includes("<td>https://example.com/very/long/path/no/breaks/here</td>"),
+            "table structure, got: " + out);
+        console.log("PASS wide table structure intact");
+    } catch (e) { console.error("FAIL table:", e.message); process.exitCode = 1; }
+}
+
+// 10. Wide tables keep parsable structure for the fixed layout.
+{
+    const { sandbox } = makeSandbox([]);
+    loadChat(sandbox);
+    try {
+        const out = vm.runInContext(`formatReply(${JSON.stringify(
+            "| A | B |\n|---|---|\n| https://example.com/very/long/path/no/breaks/here | 2 |"
+        )})`, sandbox);
+        assert.ok(out.includes("<table>") && out.includes("<th>A</th>") &&
+            out.includes("<td>https://example.com/very/long/path/no/breaks/here</td>"),
+            "table structure, got: " + out);
+        assert.ok(out.includes('<div class="message-content-table">'),
+            "table wrapper div present");
+        console.log("PASS wide table structure intact");
+    } catch (e) { console.error("FAIL table:", e.message); process.exitCode = 1; }
+}
+
+// 11. Bold glued to words on both sides, start, and middle.
+{
+    const { sandbox } = makeSandbox([]);
+    loadChat(sandbox);
+    try {
+        const out = vm.runInContext(`formatReply(${JSON.stringify(
+            "The**Waterfall Model**is **Agile**is an**iterative and incremental**framework"
+        )})`, sandbox);
+        assert.ok(out.includes("The <strong>Waterfall Model</strong> is"),
+            "bold glued both sides, got: " + out);
+        assert.ok(out.includes("<strong>Agile</strong> is"),
+            "bold glued to following word, got: " + out);
+        assert.ok(out.includes("an <strong>iterative and incremental</strong> framework"),
+            "bold between words, got: " + out);
+        assert.ok(!out.includes("**Waterfall") && !out.includes("**Agile") &&
+            !out.includes("**iterative"), "no raw bold markers, got: " + out);
+        console.log("PASS bold glued to words renders with spaces");
+    } catch (e) { console.error("FAIL bold-glued:", e.message); process.exitCode = 1; }
+}
+
+// 12. HTML character references decode to real characters.
+{
+    const { sandbox } = makeSandbox([]);
+    loadChat(sandbox);
+    try {
+        const out = vm.runInContext(`formatReply(${JSON.stringify(
+            "&#x53;ystem and &#70;ields &amp; more"
+        )})`, sandbox);
+        assert.ok(out.includes("System and Fields & more"),
+            "entities decoded, got: " + out);
+        assert.ok(!out.includes("&#x") && !out.includes("&#70;") &&
+            !out.includes("&amp;"), "no raw entities, got: " + out);
+        console.log("PASS HTML entities decode safely");
+    } catch (e) { console.error("FAIL entities:", e.message); process.exitCode = 1; }
+}
+
+// 13. Italic glued to words gets spaced correctly.
+{
+    const { sandbox } = makeSandbox([]);
+    loadChat(sandbox);
+    try {
+        const out = vm.runInContext(`formatReply(${JSON.stringify(
+            "Read*this*now and *fast*quickly"
+        )})`, sandbox);
+        assert.ok(out.includes("Read <em>this</em> now"),
+            "italic glued both sides, got: " + out);
+        assert.ok(out.includes("and <em>fast</em> quickly"),
+            "italic glued following word, got: " + out);
+        console.log("PASS italic glued to words renders with spaces");
+    } catch (e) { console.error("FAIL italic-glued:", e.message); process.exitCode = 1; }
+}
+
+// 14. Sources never appear: card DOM absent despite a sources SSE
+//     event; inline [Source N] markers stripped from the answer.
+{
+    const { sandbox, byId } = makeSandbox([
+        SSE_SOURCES +
+        'event: sources\ndata: {"sources": [{"document_id": 3,' +
+        ' "subject_code": "BCS501", "page_number": 12, "filename":' +
+        ' "SE Notes.pdf"}]}\n\n' +
+        SSE_TOKEN("Waterfall is sequential. [Source 1] [Source 2]") +
+        SSE_DONE(true),
+    ]);
+    sandbox.fetch = undefined; // guard: JSON fallback endpoint unused
+    loadChat(sandbox);
+    vm.runInContext(`askQuestion("Explain SDLC")`, sandbox);
+    setTimeout(() => {
+        try {
+            const html = byId.chatMessages.children
+            .map((c) => c.innerHTML).join("");
+            assert.ok(!html.includes("source-citations"),
+                "no source card DOM");
+            assert.ok(!html.includes("Sources"), "no Sources heading");
+            assert.ok(!html.includes("📄"), "no citation bullet");
+            assert.ok(!html.includes("Open ↗"), "no PDF links");
+            assert.ok(!html.includes("SE Notes"), "no filenames");
+            assert.ok(!html.includes("Page 12"), "no page numbers");
+            // The harness stub's querySelector detaches content nodes,
+            // so the streamed text is asserted through the exact
+            // renderer renderStreamed uses (formatReply).
+            const rendered = vm.runInContext(
+                `formatReply(${JSON.stringify(
+                    "Waterfall is sequential. [Source 1] [Source 2]")})`,
+                sandbox);
+            assert.ok(!rendered.includes("[Source"),
+                "no [Source N] markers, got: " + rendered);
+            assert.ok(rendered.includes("Waterfall is sequential."),
+                "answer content preserved, got: " + rendered);
+            console.log("PASS sources hidden during streaming + completion");
+        } catch (e) { console.error("FAIL sources-hidden:", e.message); process.exitCode = 1; }
+    }, 50);
+}
+
+// 15. Address stripSystemCitations directly: academic numbered lists
+//     and bracket text unrelated to Source markers must survive.
+{
+    const { sandbox } = makeSandbox([]);
+    loadChat(sandbox);
+    try {
+        const out = vm.runInContext(`formatReply(${JSON.stringify(
+            "See [Source 2] details.\n1. [3] IEEE 802.11 standard\nand [4-bit bus] remains."
+        )})`, sandbox);
+        assert.ok(!out.includes("[Source 2]") && !out.includes("details ."),
+            "system marker gone, got: " + out);
+        assert.ok(out.includes("[3] IEEE 802.11 standard"),
+            "academic reference list intact (as markdown list), got: " + out);
+        assert.ok(out.includes("[4-bit bus]"),
+            "unrelated brackets intact, got: " + out);
+        console.log("PASS citation markers stripped, references preserved");
+    } catch (e) { console.error("FAIL strip-markers:", e.message); process.exitCode = 1; }
+}
+
+// 16. Starter suggestions: fetched from the backend, mixed render.
+{
+    const made = makeSandbox([]);
+    made.byId.chatSuggestions = makeEl();
+    made.sandbox.document.getElementById = (id) => made.byId[id] || makeEl();
+    loadChat(made.sandbox);
+    const suggestionsCalls = [];
+    // Wrap fetch to also capture the suggestions GET.
+    const sseFetch = made.sandbox.fetch;
+    made.sandbox.fetch = function (url, opts) {
+        if (url === "/api/chat/suggestions") {
+            suggestionsCalls.push({ url });
+            return Promise.resolve({
+                ok: true,
+                json: () => Promise.resolve({
+                    semester: 5,
+                    suggestions: [
+                        { text: "Explain the OSI reference model.", subject_code: "BCS502" },
+                        { text: "State the pumping lemma.", subject_code: "BCS503" },
+                        { text: "Explain COCOMO estimation.", subject_code: "BCS501" },
+                        { text: "Explain grep usage.", subject_code: "BCS504" },
+                    ],
+                }),
+            });
+        }
+        return sseFetch(url, opts);
+    };
+    vm.runInContext("refreshStarterSuggestions()", made.sandbox);
+    setTimeout(() => {
+        try {
+            assert.strictEqual(suggestionsCalls.length, 1,
+                "one suggestions GET");
+            assert.strictEqual(suggestionsCalls[0].url,
+                "/api/chat/suggestions");
+            const wrap = made.byId.chatSuggestions;
+            assert.strictEqual(wrap.children.length, 4,
+                "mixed chips rendered, got: " + wrap.children.length);
+            const texts = wrap.children.map((b) => b.textContent);
+            assert.ok(texts.some((t) => t.includes("OSI")), "CN chip");
+            assert.ok(texts.some((t) => t.includes("pumping")), "TOC chip");
+            assert.ok(!wrap.innerHTML.includes("Sprints deliver"),
+                "no stale template suggestions injected");
+            console.log("PASS starter suggestions fetched + mixed");
+        } catch (e) { console.error("FAIL suggestions:", e.message); process.exitCode = 1; }
+    }, 50);
+}
+
 setTimeout(() => console.log("FRONTEND HARNESS DONE"), 300);

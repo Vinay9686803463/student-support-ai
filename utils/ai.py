@@ -42,13 +42,30 @@ def _build_grounded_prompt(message, context):
         f"- {_format_question(q)}" for q in questions[:20]
     )
 
+    history = context.get("history") or []
+    history_lines = ""
+    if history:
+        lines = []
+        for msg in history[-6:]:
+            role = (msg.get("role") or "").strip().lower() if isinstance(msg, dict) else ""
+            content = (msg.get("content") or "").strip() if isinstance(msg, dict) else str(msg)
+            if role in ("user", "assistant") and content:
+                label = "Student" if role == "user" else "Assistant"
+                if len(content) > 300:
+                    content = content[:300] + "..."
+                lines.append(f"{label}: {content}")
+        if lines:
+            history_lines = "Conversation history:\n" + "\n".join(lines) + "\n\n"
+
     return (
-        "You are Student Support AI, a friendly tutor for VTU CSE undergraduates. "
-        "Answer clearly and concisely (under 220 words), using short bullet points "
-        "where helpful. Stay on academic topics; this is a study app.\n\n"
+        "You are Student Support AI, an expert tutor for VTU CSE undergraduates. "
+        "Generate detailed, thorough, well-structured answers with headings, "
+        "examples, tables, and code blocks. Use Markdown formatting. Be "
+        "comprehensive but accurate. Stay on academic topics; this is a study app.\n\n"
         f"Student name: {context.get('name') or 'Student'}\n"
         f"Current semester subjects:\n{subject_lines or '(unknown)'}\n\n"
         f"Important-question bank (may be relevant):\n{bank_lines or '(empty)'}\n\n"
+        f"{history_lines}"
         f"Student question: {message}"
     )
 
@@ -405,8 +422,8 @@ def generate_answer(message, context=None):
             try:
                 openai_reply = _openai.generate_answer(
                     _build_grounded_prompt(text, context),
-                    timeout=45,
-                    max_tokens=800,
+                    timeout=60,
+                    max_tokens=1200,
                 )
                 if openai_reply:
                     return openai_reply

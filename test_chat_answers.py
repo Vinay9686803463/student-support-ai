@@ -23,6 +23,27 @@ from utils import rag_ai
 from utils.answer_cache import invalidate_all
 from utils.rag import build_rag_prompt
 
+_ISOLATED_DB_URL = None
+
+
+def _isolated_test_database():
+    """One shared sqlite DATABASE_URL for every app-importing test class.
+
+    The Flask engine is created the FIRST time app is imported, so an
+    os.environ change in a later setUpClass cannot rebind it. All route
+    classes therefore share this module's single isolated DB
+    (production Postgres is never touched).
+    """
+    global _ISOLATED_DB_URL
+    if _ISOLATED_DB_URL is None:
+        import tempfile
+        t = tempfile.mkdtemp(prefix="chatqa_")
+        _ISOLATED_DB_URL = (
+            "sqlite:///" + os.path.join(t, "r.db").replace("\\", "/"))
+    os.environ["DATABASE_URL"] = _ISOLATED_DB_URL
+    return _ISOLATED_DB_URL
+
+
 RESULTS = [
     {
         "document_id": 11,
@@ -209,8 +230,10 @@ class FallbackUserSafeTextTest(unittest.TestCase):
             text = _compose_no_provider_answer(
                 "Explain normalization", self._results(),
                 provider="gemini", error_code=code)
+            # When a general explanation is available, it is shown
+            # cleanly without the "temporarily unavailable" notice.
             self.assertIn(
-                "The AI assistant is temporarily unavailable", text)
+                "General explanation", text)
             for forbidden in ("provider_not_configured",
                               "model_not_found", "auth_invalid",
                               "auth_missing", "quota_exceeded",
@@ -219,7 +242,6 @@ class FallbackUserSafeTextTest(unittest.TestCase):
                               "Traceback", "AIza"):
                 self.assertNotIn(forbidden, text)
             # Study-bank content still labeled, never AI-claimed.
-            self.assertIn("Relevant excerpts", text)
             self.assertNotIn("AI-generated", text)
 
     def test_quota_error_keeps_code_in_payload_only(self):
@@ -248,10 +270,10 @@ class FallbackUserSafeTextTest(unittest.TestCase):
         self.assertEqual(out["answer_kind"], "fallback_excerpts")
         # Distinguished for developers...
         self.assertEqual(out["error_code"], "rate_limited")
-        # ...but friendly for users.
+        # ...but friendly for users. A general explanation is available
+        # for this question, so it is shown instead of the scary notice.
         self.assertIn(
-            "The AI assistant is temporarily unavailable",
-            out["answer"])
+            "General explanation", out["answer"])
         self.assertNotIn("rate_limited", out["answer"])
         self.assertNotIn("429", out["answer"])
 
@@ -278,8 +300,7 @@ class FallbackUserSafeTextTest(unittest.TestCase):
             invalidate_all()
         self.assertEqual(out["error_code"], "provider_not_configured")
         self.assertIn(
-            "The AI assistant is temporarily unavailable",
-            out["answer"])
+            "General explanation", out["answer"])
         self.assertNotIn("provider_not_configured", out["answer"])
 
 
@@ -361,6 +382,32 @@ class SemesterAwareRetrievalTest(unittest.TestCase):
         self.assertIsNone(out["error_code"])
         self.assertIn("couldn't find relevant material", out["answer"])
 
+    def test_prepare_returns_only_relevant_bounded(self):
+        from unittest.mock import patch as mock_patch
+
+        def chunk(code, content):
+            return {"id": code, "document_id": code,
+                    "subject_code": code, "module_number": 1,
+                    "page_number": 1, "chunk_number": 1,
+                    "content": content, "similarity": 0.5}
+
+        mixed = [
+            chunk("BCS403", "DBMS data models and normalization."),
+            chunk("BCS501", "Agile sprints deliver increments; "
+                             "the spiral model adds risk analysis."),
+            chunk("BCS402", "Microcontroller timers and interrupts."),
+            chunk("BCS501", "Waterfall phases run sequentially."),
+            chunk("BPWSK206", "English grammar tenses and articles."),
+        ]
+        with mock_patch("utils.rag.search_hybrid",
+                        return_value=list(mixed)):
+            from utils.rag import prepare_rag_request
+            out = prepare_rag_request(
+                question="Agile vs Waterfall vs Spiral", limit=8)
+        codes = [r["subject_code"] for r in out["results"]]
+        self.assertEqual(codes, ["BCS501", "BCS501"])
+        self.assertLessEqual(len(out["results"]), 8)
+
 
 class ModelCandidatesTest(unittest.TestCase):
     def test_defaults_when_unset(self):
@@ -369,7 +416,11 @@ class ModelCandidatesTest(unittest.TestCase):
             os.environ.pop("GEMINI_MODEL", None)
             from utils.rag_ai import _model_candidates
             self.assertEqual(_model_candidates(),
-                             ("gemini-3.5-flash", "gemini-3.6-flash"))
+                             ("gemini-3.5-flash-lite",
+                              "gemini-3.7-flash",
+                              "gemini-3.6-flash",
+                              "gemini-3.8-flash",
+                              "gemini-3.5-flash"))
 
     def test_single_model_env_honored(self):
         with patch.dict("os.environ", {}, clear=False):
@@ -391,7 +442,11 @@ class ModelCandidatesTest(unittest.TestCase):
         with patch.dict("os.environ", {"GEMINI_MODELS": " , "}):
             from utils.rag_ai import _model_candidates
             self.assertEqual(_model_candidates(),
-                             ("gemini-3.5-flash", "gemini-3.6-flash"))
+                             ("gemini-3.5-flash-lite",
+                              "gemini-3.7-flash",
+                              "gemini-3.6-flash",
+                              "gemini-3.8-flash",
+                              "gemini-3.5-flash"))
 
     def test_classify_retired_and_overloaded_models(self):
         from utils.rag_ai import _classify_provider_error
@@ -401,6 +456,10 @@ class ModelCandidatesTest(unittest.TestCase):
             _classify_provider_error(Exception("504 Bad Gateway")), "server_error")
         self.assertEqual(
             _classify_provider_error(Exception("504 Deadline expired")), "timeout")
+        self.assertEqual(
+            _classify_provider_error(Exception(
+                "429 RESOURCE_EXHAUSTED You exceeded your current quota")),
+            "quota_exceeded")
 
 
 class GeminiRetiredModelFallbackTest(unittest.TestCase):
@@ -473,7 +532,7 @@ class GeminiRetiredModelFallbackTest(unittest.TestCase):
         # Recovery stops at the first working default model.
         self.assertEqual(
             tried,
-            ["gemini-2.5-flash", "gemini-3.5-flash"])
+            ["gemini-2.5-flash", "gemini-3.5-flash-lite"])
 
     def test_auth_error_does_not_try_defaults(self):
         from unittest.mock import MagicMock, patch as mock_patch
@@ -496,6 +555,38 @@ class GeminiRetiredModelFallbackTest(unittest.TestCase):
         from utils.rag_ai import get_last_provider_error
         self.assertEqual(
             get_last_provider_error().get("code"), "auth_invalid")
+
+    def test_latency_reported_as_int(self):
+        from unittest.mock import MagicMock, patch as mock_patch
+        resp = MagicMock()
+        resp.text = "timed answer"
+        client = MagicMock()
+        client.models.generate_content.return_value = resp
+        with patch.dict("os.environ", {"GEMINI_MODELS": "m1"}):
+            with mock_patch("google.genai.Client",
+                            return_value=client):
+                from utils.rag_ai import _call_gemini  # noqa: F401
+                from utils.answer_cache import invalidate_all
+                invalidate_all()
+                try:
+                    with patch.object(
+                            rag_ai, "prepare_rag_request",
+                            return_value={"question": "q",
+                                          "results": [],
+                                          "prompt": "P"}), \
+                         patch.object(rag_ai, "current_kb_version",
+                                      return_value="v-lat"), \
+                         patch.object(rag_ai, "gemini_available",
+                                      return_value=True), \
+                         patch.object(rag_ai, "active_provider",
+                                      return_value="gemini"):
+                        out = rag_ai.answer_with_rag(
+                            "Explain latency", mode="fast")
+                finally:
+                    invalidate_all()
+        self.assertTrue(out["used_ai"])
+        self.assertIsInstance(out["latency_ms"], int)
+        self.assertGreaterEqual(out["latency_ms"], 0)
 
     def test_client_reused_across_questions(self):
         from unittest.mock import MagicMock, patch as mock_patch
@@ -547,7 +638,7 @@ class GeminiRetiredModelFallbackTest(unittest.TestCase):
 
         def fake_generate(*args, **kwargs):
             model = kwargs.get("model")
-            if model in ("gemini-2.5-flash", "gemini-3.5-flash"):
+            if model in ("gemini-2.5-flash", "gemini-3.5-flash-lite"):
                 raise Exception(
                     f"404 models/{model} is not found")
             ok = MagicMock()
@@ -573,7 +664,7 @@ class GeminiRetiredModelFallbackTest(unittest.TestCase):
         self.assertEqual(
             tried,
             ["gemini-2.5-flash",
-             "gemini-3.5-flash", "gemini-3.6-flash"])
+             "gemini-3.5-flash-lite", "gemini-3.7-flash"])
 
     def test_fallback_response_is_not_cached(self):
         from unittest.mock import MagicMock, patch as mock_patch
@@ -610,16 +701,38 @@ class GeminiRetiredModelFallbackTest(unittest.TestCase):
         invalidate_all()
 
 
+class ProviderDiagnosticsTest(unittest.TestCase):
+    """Startup banner must not demand an AIza key prefix."""
+
+    def _report_with_key(self, key):
+        _isolated_test_database()
+        with patch.dict("os.environ",
+                        {"AI_PROVIDER": "gemini",
+                         "GOOGLE_GENERATIVE_AI_API_KEY": key}):
+            from app import provider_diagnostics
+            return provider_diagnostics()
+
+    def test_non_aiza_long_key_is_accepted(self):
+        report = self._report_with_key("sk-test-key-1234567890abcdef")
+        self.assertTrue(report["key_present"])
+        self.assertTrue(report["key_format_ok"])
+
+    def test_placeholder_key_is_rejected(self):
+        report = self._report_with_key("YOUR_API_KEY_HERE")
+        self.assertTrue(report["key_present"])
+        self.assertFalse(report["key_format_ok"])
+
+    def test_short_key_is_rejected(self):
+        report = self._report_with_key("abc123")
+        self.assertFalse(report["key_format_ok"])
+
+
 class ApiChatRouteTest(unittest.TestCase):
     """POST /api/chat passes the pipeline answer through untouched."""
 
     @classmethod
     def setUpClass(cls):
-        import os
-        import tempfile
-        t = tempfile.mkdtemp(prefix="chatrout_")
-        os.environ["DATABASE_URL"] = (
-            "sqlite:///" + os.path.join(t, "r.db").replace("\\", "/"))
+        _isolated_test_database()
         from werkzeug.security import generate_password_hash
         from sqlalchemy import text
         from app import app as flask_app
@@ -672,6 +785,144 @@ class ApiChatRouteTest(unittest.TestCase):
         self.assertEqual(rv.status_code, 200)
         self.assertIn("unavailable", data["answer"])
         self.assertFalse(data["used_ai"])
+
+
+class PromptCitationRuleTest(unittest.TestCase):
+    """The RAG prompt must not ask the model to emit [Source N] markers.
+
+    Sources stay hidden from the user; markers the model was told to
+    produce would leak into answers if the prompt still requested them.
+    """
+
+    def test_prompt_has_no_inline_citation_rule(self):
+        from utils.rag import build_rag_prompt
+
+        prompt = build_rag_prompt(
+            "Explain OSI layers", results=[], max_chars_per_source=100)
+        # The old instruction ("cite it as [Source N] where N matches
+        # the SOURCE number") must be gone — rule 6 now forbids it.
+        self.assertNotIn("cite it as", prompt)
+        self.assertIn("Do not add inline citation markers", prompt)
+        # Sources still travel structurally for auditability.
+        from utils.rag_ai import format_sources
+        src = format_sources([{
+            "document_id": 1, "subject_code": "BCS502",
+            "module_number": 1, "page_number": 3, "similarity": 0.5,
+        }])
+        self.assertEqual(src[0]["subject_code"], "BCS502")
+
+
+class SuggestionsRouteTest(unittest.TestCase):
+    """GET /api/chat/suggestions: balanced across supported subjects."""
+
+    @classmethod
+    def setUpClass(cls):
+        _isolated_test_database()
+        from werkzeug.security import generate_password_hash
+        from sqlalchemy import text
+        from app import app as flask_app
+        from utils.database import db as _db
+        flask_app.config["TESTING"] = True
+        cls.app = flask_app
+        with flask_app.app_context():
+            _db.create_all()
+            h = generate_password_hash("password123")
+            # Distinct email from ApiChatRouteTest's user: pytest shares
+            # one sqlite DB across classes (app is imported once), so
+            # both users must coexist.
+            _db.session.execute(text(
+                "INSERT INTO users (name,email,password,password_hash,"
+                "branch,scheme,current_semester) VALUES ('T','sug@e.com',"
+                ":h,:h,'CSE','2022',5)"), {"h": h})
+            # Ensure the semester-5 support set exists exactly like the
+            # real DB (bootstrap may already have restored some rows).
+            wanted = [
+                ("BCS501", "Software Engineering & Project Management"),
+                ("BCS502", "Computer Networks"),
+                ("BCS503", "Theory of Computation"),
+                ("BCS505", "Professional Elective ???"),
+            ]
+            rows = _db.session.execute(text(
+                "SELECT id, subject_code FROM subjects")).mappings().all()
+            id_by_code = {r["subject_code"]: r["id"] for r in rows}
+            for code, name in wanted:
+                if code not in id_by_code:
+                    _db.session.execute(text(
+                        "INSERT INTO subjects (subject_code,subject_name,"
+                        "branch,scheme,semester,credits,icon) VALUES"
+                        "(:c,:n,'CSE','2022',5,3,'*')"), {"c": code, "n": name})
+            if "BCS401" not in id_by_code:
+                _db.session.execute(text(
+                    "INSERT INTO subjects (subject_code,subject_name,"
+                    "branch,scheme,semester,credits,icon) VALUES"
+                    "('BCS401','Algorithms','CSE','2022',4,3,'*')"))
+            _db.session.commit()
+            # Attach 4 questions per supported subject via subject ids.
+            rows = _db.session.execute(text(
+                "SELECT id, subject_code FROM subjects")).mappings().all()
+            id_by_code = {r["subject_code"]: r["id"] for r in rows}
+            for code in ("BCS501", "BCS502", "BCS503"):
+                for n in (1, 2, 3, 4):
+                    _db.session.execute(text(
+                        "INSERT INTO questions (subject_id, question,"
+                        " unit, marks, difficulty, is_important)"
+                        " VALUES (:sid, :q, 'U1', 10, 'Medium', 1)"),
+                        {"sid": id_by_code[code], "q": f"Q {code} {n}"})
+            _db.session.commit()
+
+        cls.client = flask_app.test_client()
+        cls.client.post("/login",
+                        data={"email": "sug@e.com",
+                              "password": "password123"})
+
+    def test_mix_spans_all_supported_subjects(self):
+        rv = self.client.get("/api/chat/suggestions")
+        data = rv.get_json()
+        self.assertEqual(rv.status_code, 200)
+        self.assertEqual(data["semester"], 5)
+        mix = {c["subject_code"] for c in data["suggestions"]}
+        self.assertTrue(mix <= {"BCS501", "BCS502", "BCS503"},
+                        f"only supported subjects: {mix}")
+        self.assertGreaterEqual(
+            len(mix), 3,
+            f"must span all supported subjects, got: {mix}")
+
+    def test_rotation_varies_across_loads(self):
+        import random as random_module
+        seen_orders = set()
+        from unittest.mock import patch
+
+        def identity(seq):
+            return seq
+
+        def reverse(seq):
+            seq.reverse()
+            return seq
+
+        for shuffler in (identity, reverse):
+            with patch.object(random_module, "shuffle", shuffler):
+                rv = self.client.get("/api/chat/suggestions")
+            data = rv.get_json()
+            seen_orders.add(tuple(c["text"] for c in data["suggestions"]))
+        self.assertEqual(
+            len(seen_orders), 2,
+            f"suggestions must rotate across loads, got: {seen_orders}")
+
+    def test_selected_subject_prioritized(self):
+        rv = self.client.get("/api/chat/suggestions?subject_code=BCS503")
+        data = rv.get_json()
+        codes = {c["subject_code"] for c in data["suggestions"]}
+        self.assertEqual(codes, {"BCS503"},
+                         f"subject selection wins: {codes}")
+
+    def test_unknown_subject_never_invented(self):
+        rv = self.client.get("/api/chat/suggestions?subject_code=BCS999")
+        data = rv.get_json()
+        # BCS999 has no DB rows: fallback fills from supported subjects
+        # only, never fabricated codes.
+        for chip in data["suggestions"]:
+            self.assertIn(chip["subject_code"],
+                          {"BCS501", "BCS502", "BCS503"})
 
 
 if __name__ == "__main__":

@@ -264,9 +264,27 @@ def search_knowledge(
 
 def sanitize_fts_query(question):
     """Reduce a question to plain searchable words for tsquery."""
+    try:
+        # Deferred: utils.rag imports this module at its top level,
+        # so importing it here (at call time) avoids a cycle.
+        from utils.rag import QUESTION_STOPWORDS as _stops
+    except Exception:
+        _stops = frozenset()
+    # "vs" joins comparisons without adding meaning ("A vs B"), and
+    # "model/models" matches nearly every engineering document
+    # ("data models", "system model"), recalling unrelated DBMS,
+    # Java, or English chunks for questions like "Agile vs
+    # Waterfall vs Spiral". The remaining content words still
+    # identify the topic.
+    extra = frozenset({"vs", "model", "models"})
     words = re.findall(r"[A-Za-z0-9]+", question or "")
     # Drop single letters and pure numbers-only noise; keep the rest.
-    kept = [word for word in words if len(word) > 1]
+    kept = [
+        word for word in words
+        if len(word) > 1
+        and word.lower() not in _stops
+        and word.lower() not in extra
+    ]
     return " ".join(kept[:40])
 
 
