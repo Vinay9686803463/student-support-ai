@@ -1,34 +1,73 @@
-/* Source citations style */
+/* Sources are never shown in the chat UI; citation DOM is dropped in
+   JS (see chat.js). No .source-citations styles on purpose.
+*/
+/*
+.source-citations { ... }  (Intentionally empty.)
+*/
 
-.source-citations {
-    margin-top: 0.5rem;
-    margin-bottom: 1rem;
-    padding-top: 0.5rem;
-    border-top: 1px solid var(--border-color, #dee2e6);
-    font-size: 0.85rem;
-    color: #6c757d;
+/* Chat input focus: subtle theme-neutral indicator, no blue glow.
+
+   The global accessibility rule later in style.css adds a 2px blue
+   -primary outline to every textarea:focus-visible; that outranks the
+   base `.chat-input-box textarea { outline: none }` rule. These rules
+   win by specificity and redirect focus on THIS field only.
+*/
+
+.chat-input-box:focus-within {
+    border-color: var(--primary);
+    box-shadow: 0 0 0 2px rgba(25, 25, 255, 0.2);
 }
 
-.source-citations strong {
-    display: block;
-    margin-bottom: 0.25rem;
-    color: #495057;
+.chat-input-box textarea:focus,
+.chat-input-box textarea:focus-visible,
+.chat-input-box textarea:active {
+    outline: none;
+    box-shadow: none;
 }
 
-.source-citations span {
-    display: block;
-    margin-bottom: 0.15rem;
+/* Dynamic "Suggested follow-up questions" section after each AI answer */
+
+.followup-suggestions {
+    margin: 12px 0 16px 48px;
 }
 
-.source-citations span:last-child {
-    margin-bottom: 0;
+.followup-label {
+    margin: 0 0 8px;
+    color: var(--muted);
+    font-size: 11px;
 }
 
-/* Keep existing overrides minimal */
+.followup-suggestions .suggestions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+}
 
-/* Ensure citations don't interfere with message layout */
+.followup-suggestions .suggestion-chip {
+    padding: 8px 12px;
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 9px;
+    color: var(--text);
+    font-size: 11px;
+    cursor: pointer;
+    transition: 0.2s;
+    text-align: left;
+}
 
-.chat-messages .message:last-child .source-citations {
-    margin-top: 0.75rem;
-    border-top-color: #e0e0e0;
+.followup-suggestions .suggestion-chip:hover {
+    border-color: var(--primary);
+    color: var(--primary-light);
+    background: rgba(25, 25, 255, 0.08);
+}
+
+/* Mobile: full-width chips for easy tapping */
+@media (max-width: 650px) {
+    .followup-suggestions {
+        margin-left: 0;
+    }
+    .followup-suggestions .suggestion-chip {
+        width: 100%;
+        text-align: left;
+    }
 }

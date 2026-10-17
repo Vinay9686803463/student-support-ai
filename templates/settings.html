@@ -683,7 +683,13 @@ const savedDarkMode =
     );
 
 
-if (savedDarkMode === "true") {
+if (savedDarkMode === "false") {
+
+    darkMode.checked = false;
+
+    applyDarkMode(false);
+
+} else {
 
     darkMode.checked = true;
 

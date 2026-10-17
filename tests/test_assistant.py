@@ -60,6 +60,55 @@ def test_sanitize_fts_query():
     assert sanitize_fts_query("") == ""
 
 
+def test_sanitize_drops_joiners_and_generic_model_words():
+    from utils.vector_search import sanitize_fts_query
+    assert (sanitize_fts_query("Agile vs Waterfall vs Spiral models")
+            == "Agile Waterfall Spiral")
+
+
+def _relevance_chunk(content):
+    return {"content": content}
+
+
+def test_relevance_gate_keeps_sepm_drops_unrelated():
+    from utils.rag import meets_relevance, relevance_terms
+    q = "Agile vs Waterfall vs Spiral"
+    terms = relevance_terms(q)
+    assert terms == ["agile", "waterfall", "spiral"]
+    sepm = _relevance_chunk(
+        "The spiral model adds risk analysis loops; "
+        "agile welcomes changing requirements.")
+    dbms = _relevance_chunk(
+        "DBMS data models include hierarchical and network models.")
+    java = _relevance_chunk(
+        "Java classes and objects support inheritance.")
+    micro = _relevance_chunk(
+        "Microcontrollers use timers and interrupts.")
+    english = _relevance_chunk(
+        "English grammar covers tenses and articles.")
+    assert meets_relevance(sepm, terms) is True
+    for junk in (dbms, java, micro, english):
+        assert meets_relevance(junk, terms) is False
+
+
+def test_relevance_short_terms_need_whole_tokens():
+    from utils.rag import meets_relevance
+    assert meets_relevance({"content": "which theory"}, ["hi"]) is False
+    assert meets_relevance({"content": "say hi there"}, ["hi"]) is True
+    assert meets_relevance({"content": "Explain DFA"}, ["dfa"]) is True
+
+
+def test_relevance_empty_terms_keeps_everything():
+    from utils.rag import _relevant_only
+    rows = [_relevance_chunk("anything"), _relevance_chunk("else")]
+    assert _relevant_only(rows, "???") == rows
+    gated = _relevant_only(
+        [_relevance_chunk("agile sprints"),
+         _relevance_chunk("unrelated DBMS Java")],
+        "Agile vs Waterfall vs Spiral")
+    assert [r["content"] for r in gated] == ["agile sprints"]
+
+
 def test_split_text_chunks():
     from utils.knowledge_ingest import clean_text, split_text
     assert clean_text("a  b\r\n\r\n\r\nc") == "a b\n\nc"
@@ -156,7 +205,9 @@ def test_answer_kind_no_provider_stubbed():
     assert out["used_ai"] is False
     assert out["answer_kind"] == "fallback_excerpts"
     assert out["error_code"] == "provider_not_configured"
-    assert "Direct AI answering is currently unavailable" in out["answer"]
+    # A general explanation is available for this question, so it
+    # is shown cleanly instead of the "temporarily unavailable" notice.
+    assert "General explanation" in out["answer"]
 
 
 def test_coverage_rerank_prefers_topical_passage():

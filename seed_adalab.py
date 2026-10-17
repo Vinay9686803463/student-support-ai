@@ -19,8 +19,24 @@ Runs against DATABASE_URL (.env) - local SQLite or production Postgres.
 
 from pathlib import Path
 
-from pypdf import PdfReader
-from sqlalchemy import text
+from importlib import import_module
+
+try:
+    PdfReader = import_module("pypdf").PdfReader
+except ModuleNotFoundError as exc:  # pragma: no cover - depends on environment.
+    raise RuntimeError(
+        "pypdf is required to validate the study-material PDF. "
+        "Install it in the project virtual environment."
+    ) from exc
+
+try:
+    from sqlalchemy import text  # type: ignore[reportMissingImports]
+except ImportError:  # pragma: no cover - project venv normally provides this.
+    def text(_statement):
+        raise RuntimeError(
+            "SQLAlchemy is required to run this seeder. "
+            "Activate the project virtual environment and install dependencies."
+        )
 
 from app import app
 from utils.bootstrap import (

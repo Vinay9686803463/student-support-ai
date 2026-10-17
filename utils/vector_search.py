@@ -1,10 +1,19 @@
 import os
 import re
-
-import psycopg
-from dotenv import load_dotenv
 from functools import lru_cache
 
+
+def _load_dotenv():
+    try:
+        from importlib import import_module
+
+        _load_dotenv_func = import_module("dotenv").load_dotenv
+    except ImportError:
+        def _load_dotenv_func(*args, **kwargs):
+            return False
+    return _load_dotenv_func
+
+load_dotenv = _load_dotenv()
 load_dotenv()
 
 DATABASE_URL = os.getenv("DATABASE_URL")
@@ -83,7 +92,9 @@ def get_model():
     if _model is None:
         # Imported lazily so keyword search keeps working on machines
         # without torch installed; only vector search needs the model.
-        from sentence_transformers import SentenceTransformer
+        from importlib import import_module
+
+        SentenceTransformer = import_module("sentence_transformers").SentenceTransformer
 
         try:
             _model = SentenceTransformer(MODEL_NAME)
@@ -253,9 +264,27 @@ def search_knowledge(
 
 def sanitize_fts_query(question):
     """Reduce a question to plain searchable words for tsquery."""
+    try:
+        # Deferred: utils.rag imports this module at its top level,
+        # so importing it here (at call time) avoids a cycle.
+        from utils.rag import QUESTION_STOPWORDS as _stops
+    except Exception:
+        _stops = frozenset()
+    # "vs" joins comparisons without adding meaning ("A vs B"), and
+    # "model/models" matches nearly every engineering document
+    # ("data models", "system model"), recalling unrelated DBMS,
+    # Java, or English chunks for questions like "Agile vs
+    # Waterfall vs Spiral". The remaining content words still
+    # identify the topic.
+    extra = frozenset({"vs", "model", "models"})
     words = re.findall(r"[A-Za-z0-9]+", question or "")
     # Drop single letters and pure numbers-only noise; keep the rest.
-    kept = [word for word in words if len(word) > 1]
+    kept = [
+        word for word in words
+        if len(word) > 1
+        and word.lower() not in _stops
+        and word.lower() not in extra
+    ]
     return " ".join(kept[:40])
 
 

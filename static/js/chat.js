@@ -8,6 +8,7 @@
 
 var currentAborter = null;
 var lastFailedMessage = null;
+var conversationHistory = [];  // [{role: "user"|"assistant", content: "..."}]
 
 function getMode() {
     var stored = null;
@@ -87,9 +88,13 @@ function handleEnter(event) {
 }
 
 function escapeHtml(text) {
-    const div = document.createElement("div");
-    div.textContent = text;
-    return div.innerHTML;
+    // Escape < and > but NOT &: entities are decoded before this runs
+    // (decodeSafeEntities), so & from &amp; should stay as &, not become
+    // &amp; again. Escaping only < and > is sufficient for XSS safety
+    // since <script> tags are the main vector.
+    return text
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;");
 }
 
 function scrollChat() {
@@ -123,60 +128,70 @@ function addThinking() {
     return el;
 }
 
-function addSourceCitations(sources) {
-    const messages = document.getElementById("chatMessages");
-    if (!sources || sources.length === 0) {
+// Sources are intentionally never rendered. The server still returns
+// per-document metadata (document_id, subject_code, page, ...) inside
+// the response and SSE "sources" events so RAG stays auditable and
+// grounded — that data is simply dropped before it can reach the DOM.
+
+function stripSystemCitations(text) {
+    // Remove ONLY unambiguous system-generated citation markers the
+    // backend asks the model to emit: [Source 2] and stored sequences
+    // like [Source 1], [Source 3]. Numbered academic reference lists
+    // ("1. [3] IEEE 802.11 ..."), topic markers like [2]-modulo, and
+    // bracket links are untouched — the pattern must literally start
+    // with the word "Source" inside brackets.
+    return (text || "").replace(
+        /\[\s*Sources?\s*:\s*\d+(?:\s*(?:,|;|and)\s*\d+)*\s*\]|\[\s*Sources?\s+\d+\s*\]/gi,
+        ""
+    ).replace(/[ \t]+([.,;:])/g, "$1")  // "answer . " -> "answer."
+        .replace(/[ \t]{2,}/g, " ")     // collapse gaps left by markers
+        .replace(/\(\s*\)/g, "");
+}
+
+function addSourceCitations() {
+    // No-op by design (kept so any stray historical call site is
+    // harmless). Sources never appear in the chat UI.
+}
+
+function addFollowupSuggestions(messageEl, suggestions) {
+    if (!suggestions || suggestions.length === 0) {
         return;
     }
 
-    const el = document.createElement("div");
-    el.className = "source-citations";
-    el.innerHTML = '<strong>Sources</strong>';
+    const messages = document.getElementById("chatMessages");
+    const section = document.createElement("div");
+    section.className = "followup-suggestions";
 
-    const seen = {};
-    sources.forEach(function (src) {
-        const documentId = src.document_id || "unknown";
-        const subjectCode = src.subject_code || "";
-        const moduleNumber = src.module_number || "";
-        const pageNumber = src.page_number || "";
-        const filename = src.filename || src.doc_title || "";
-        const key = documentId + ":" + pageNumber;
-        if (seen[key]) {
-            return;
-        }
-        seen[key] = true;
+    const label = document.createElement("p");
+    label.className = "followup-label";
+    label.textContent = "Suggested follow-up questions";
+    section.appendChild(label);
 
-        let citation = "📄 ";
-        if (subjectCode) {
-            citation += escapeHtml(subjectCode);
-        }
-        if (filename) {
-            citation += (subjectCode ? " • " : "") + escapeHtml(String(filename));
-        }
-        if (moduleNumber || pageNumber) {
-            citation += "<br>";
-            const bits = [];
-            if (moduleNumber) {
-                bits.push("Module " + escapeHtml(String(moduleNumber)));
-            }
-            if (pageNumber) {
-                bits.push("Page " + escapeHtml(String(pageNumber)));
-            }
-            citation += bits.join(" • ");
-        }
-        if (documentId !== "unknown") {
-            citation +=
-                ' <a href="/knowledge/pdf/' + encodeURIComponent(documentId) +
-                '" target="_blank" rel="noopener">Open ↗</a>';
-        }
+    const chips = document.createElement("div");
+    chips.className = "suggestions";
 
-        const span = document.createElement("span");
-        span.innerHTML = citation;
-        el.appendChild(span);
+    suggestions.forEach(function (text) {
+        const btn = document.createElement("button");
+        btn.type = "button";
+        btn.className = "mini-btn suggestion-chip";
+        btn.textContent = text;
+        btn.title = "Ask: " + text;
+        btn.onclick = function () {
+            submitQuestion(text);
+        };
+        chips.appendChild(btn);
     });
 
-    messages.appendChild(el);
+    section.appendChild(chips);
+    messages.appendChild(section);
     scrollChat();
+}
+
+function clearFollowupSuggestions() {
+    const messages = document.getElementById("chatMessages");
+    messages.querySelectorAll(".followup-suggestions").forEach(function (el) {
+        el.remove();
+    });
 }
 
 function addMessageActions(messageEl, getText) {
@@ -223,30 +238,160 @@ function addMessageActions(messageEl, getText) {
 
 var lastUserMessage = null;
 
-function renderInline(text) {
-    // Inline markup on already-escaped text: `code, **bold**.
-    // Runs after escapeHtml, so inserted tags are ours only (XSS-safe).
+var NAMED_ENTITIES = {
+    amp: "&", lt: "<", gt: ">", quot: '"', apos: "'",
+    nbsp: " ", copy: "©", reg: "®",
+    hellip: "…", mdash: "—", ndash: "–",
+    laquo: "«", raquo: "»"
+};
+
+function decodeSafeEntities(text) {
+    // Decode ONLY safe entities the model sometimes emits literally
+    // (e.g. "&#x52;equirements"): numeric refs plus a small named
+    // allowlist. Runs BEFORE escaping, so decoded "<" can never
+    // become markup (XSS-safe). Unknown entities stay untouched.
     return text
-        .replace(/`([^`\n]+)`/g, "<code>$1</code>")
-        .replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>");
+        .replace(/&#([0-9]{1,7});/g, function (match, digits) {
+            var code = parseInt(digits, 10);
+            return (code > 0 && code < 0x110000)
+                ? String.fromCharCode(code) : match;
+        })
+        .replace(/&#[xX]([0-9a-fA-F]{1,6});/g, function (match, hex) {
+            var code = parseInt(hex, 16);
+            return (code > 0 && code < 0x110000)
+                ? String.fromCharCode(code) : match;
+        })
+        .replace(/&(amp|lt|gt|quot|apos|nbsp|copy|reg|hellip|mdash|ndash|laquo|raquo);/g,
+            function (match, name) {
+                return NAMED_ENTITIES[name];
+            });
+}
+
+function unescapeMarkdownPunct(s) {
+    // Drop backslashes the model adds before ASCII punctuation
+    // ("\#" -> "#", "\*" -> "*"). Backslash+letter sequences
+    // (LaTeX like \frac) are intentionally left alone. Runs once
+    // per line before block detection (see renderMarkdown); never
+    // re-applied downstream so "\\#" correctly stays "\#".
+    return s.replace(/\\([\\!"#$%&'()*+,\-./:;<=>?@[\\\]^_`{|}~])/g, "$1");
+}
+
+function renderInline(text) {
+    // Inline markup on already-escaped text. `code` spans are split
+    // out first so unescaping, emphasis padding, and bold/italic
+    // never touch code content (LaTeX and examples stay literal).
+    var segments = text.split(/(`[^`\n]+`)/g);
+    for (var i = 0; i < segments.length; i++) {
+        if (i % 2 === 1) {
+            segments[i] = "<code>" + segments[i].slice(1, -1) + "</code>";
+        } else {
+            segments[i] = renderInlineText(segments[i]);
+        }
+    }
+    return segments.join("");
+}
+
+function renderInlineText(text) {
+    // Split on ** to separate bold spans from plain text. Odd-indexed
+    // parts are bold content; even-indexed parts are plain text. This
+    // avoids the classic problem where **bold**is an**example** matches
+    // **is an** as a single bold span, consuming the ** delimiters from
+    // both sides.
+    var parts = text.split('**');
+    var result = '';
+
+    for (var i = 0; i < parts.length; i++) {
+        if (i % 2 === 1) {
+            // Bold part
+            result += '<strong>' + parts[i] + '</strong>';
+        } else {
+            // Non-bold part: pad around adjacent bold spans and process
+            // italic within this segment.
+            var part = parts[i];
+            // Pad before if previous part was bold and ended with non-space,
+            // and current part doesn't already start with space or begin
+            // with sentence-ending punctuation (never put a space before
+            // "!", ".", etc. — "**details**." renders as "details.").
+            if (i > 0 && parts[i - 1] && parts[i - 1][parts[i - 1].length - 1] !== ' '
+                    && part[0] !== ' ' && !/^[.,;:!?)\]}'"]/.test(part)) {
+                part = ' ' + part;
+            }
+            // Pad after if next part is bold and starts with non-space,
+            // and current part doesn't already end with space
+            if (i < parts.length - 1 && parts[i + 1] && parts[i + 1][0] !== ' ' && part[part.length - 1] !== ' ') {
+                part = part + ' ';
+            }
+            // Convert markdown links. Only http(s), mailto, and local
+            // relative paths become anchors; anything else (javascript:
+            // etc.) stays literal text. Quotes inside the URL are
+            // rejected so the href attribute can't be broken out of.
+            part = part.replace(/\[([^\]\n]+)\]\(([^()\s]+)\)/g,
+                function (match, label, url) {
+                    if (/^(https?:\/\/|mailto:|\/|#)/i.test(url)
+                            && url.indexOf('"') === -1) {
+                        return '<a href="' + url
+                            + '" target="_blank" rel="noopener">'
+                            + label + "</a>";
+                    }
+                    return match;
+                });
+            // Process italic within non-bold part. Lookbehind is
+            // zero-width (no capture), so group 1 is always the italic
+            // content — this was previously capturing the prefix
+            // alternation and corrupting the emitted <em> tags.
+            part = part.replace(
+                /(?<=(?:^|[\s(>]|\w))\*(\S(?:[^*\n]*\S)?)\*(?=[\s\S])/g,
+                "<em>$1</em>");
+            // Add space around italic only when glued to a word: before
+            // the open tag when the preceding char is a word char, and
+            // after the close tag when the following char is a word
+            // char. Punctuation is never padded ("*sprints*." keeps its
+            // period tight) and tags are only touched along their outer
+            // edges, so "this</em>" content is never mangled.
+            part = part.replace(/(?<=\w)<em>/g, " <em>");
+            part = part.replace(/<\/em>(?=\w)/g, "</em> ");
+            result += part;
+        }
+    }
+    return result;
 }
 
 function renderMarkdown(text) {
     // Small block renderer for model answers: fenced code, headings,
     // bullet/numbered lists, tables, rules, paragraphs. Input is
-    // escaped first; single newlines inside a paragraph become <br>.
-    var lines = escapeHtml(text).split("\n");
+    // escaped first. Single newlines inside a paragraph are soft
+    // wraps and join with a space (standard Markdown); only a blank
+    // line starts a new paragraph. This keeps related sentences
+    // together instead of breaking every line apart. Fenced code
+    // blocks are stashed up front (raw) so entity-decoding and
+    // Markdown fixes never alter code or LaTeX; inline `code` is
+    // protected later inside renderInline.
+    var fenceStore = [];
+    var remainder = text.replace(/```[\s\S]*?(?:```|$)/g,
+        function (block) {
+            fenceStore.push(block);
+            return "\uE000" + (fenceStore.length - 1) + "\uE000";
+        });
+    var lines = escapeHtml(decodeSafeEntities(remainder)).split("\n");
     var html = [];
     var inCode = false;
     var codeBuf = [];
     var listTag = null;
     var paraBuf = [];
     var tableBuf = [];
+    var quoteBuf = [];
 
     function flushPara() {
         if (paraBuf.length) {
-            html.push("<p>" + renderInline(paraBuf.join("<br>")) + "</p>");
+            html.push("<p>" + renderInline(paraBuf.join(" ")) + "</p>");
             paraBuf = [];
+        }
+    }
+    function flushQuote() {
+        if (quoteBuf.length) {
+            html.push("<blockquote>" + renderInline(quoteBuf.join(" "))
+                + "</blockquote>");
+            quoteBuf = [];
         }
     }
     function flushList() {
@@ -281,19 +426,27 @@ function renderMarkdown(text) {
             }).join("") + "</tr>");
         });
         out.push("</table>");
-        html.push(out.join(""));
+        html.push('<div class="message-content-table">' + out.join("") + "</div>");
         tableBuf = [];
     }
 
     lines.forEach(function (line) {
         var trimmed = line.trim();
-        if (trimmed.indexOf("```") === 0) {
+        // Unescape model over-escaping ("\#", "\*") BEFORE block
+        // detection so headings/lists/tables are recognized, but
+        // never inside `code` spans (examples stay literal).
+        var codeParts = trimmed.split(/(`[^`\n]+`)/g);
+        var scan = codeParts.map(function (part, index) {
+            return (index % 2 === 1) ? part : unescapeMarkdownPunct(part);
+        }).join("");
+        if (scan.indexOf("```") === 0) {
             if (inCode) {
                 html.push("<pre><code>" + codeBuf.join("\n") + "</code></pre>");
                 codeBuf = [];
                 inCode = false;
             } else {
                 flushPara();
+                flushQuote();
                 flushList();
                 flushTable();
                 inCode = true;
@@ -304,30 +457,42 @@ function renderMarkdown(text) {
             codeBuf.push(line);
             return;
         }
-        if (trimmed.indexOf("|") !== -1) {
+        if (scan.indexOf("|") !== -1) {
             flushPara();
+            flushQuote();
             flushList();
-            tableBuf.push(trimmed);
+            tableBuf.push(scan);
             return;
         }
         flushTable();
-        var heading = trimmed.match(/^(#{1,3})\s+(.*)$/);
+        var heading = scan.match(/^(#{1,4})\s+(.*)$/);
         if (heading) {
             flushPara();
+            flushQuote();
             flushList();
-            var level = heading[1].length + 1;
+            var level = Math.min(heading[1].length + 1, 6);
             html.push("<h" + level + ">" + renderInline(heading[2]) + "</h" + level + ">");
             return;
         }
-        if (/^---+$/.test(trimmed)) {
+        if (/^---+$/.test(scan)) {
             flushPara();
+            flushQuote();
             flushList();
             html.push("<hr>");
             return;
         }
-        var bullet = trimmed.match(/^[-*]\s+(.*)$/);
+        var quote = scan.match(/^&gt;\s?(.*)$/);
+        if (quote) {
+            flushPara();
+            flushList();
+            flushTable();
+            quoteBuf.push(quote[1]);
+            return;
+        }
+        var bullet = scan.match(/^[-*]\s+(.*)$/);
         if (bullet) {
             flushPara();
+            flushQuote();
             if (listTag !== "ul") {
                 flushList();
                 html.push("<ul>");
@@ -336,9 +501,10 @@ function renderMarkdown(text) {
             html.push("<li>" + renderInline(bullet[1]) + "</li>");
             return;
         }
-        var ordered = trimmed.match(/^\d+[.)]\s+(.*)$/);
+        var ordered = scan.match(/^\d+[.)]\s+(.*)$/);
         if (ordered) {
             flushPara();
+            flushQuote();
             if (listTag !== "ol") {
                 flushList();
                 html.push("<ol>");
@@ -347,25 +513,47 @@ function renderMarkdown(text) {
             html.push("<li>" + renderInline(ordered[1]) + "</li>");
             return;
         }
-        if (!trimmed) {
+        if (!scan) {
             flushPara();
+            flushQuote();
             flushList();
             return;
         }
         flushList();
-        paraBuf.push(trimmed);
+        paraBuf.push(scan);
     });
     if (inCode) {
         html.push("<pre><code>" + codeBuf.join("\n") + "</code></pre>");
     }
     flushPara();
+    flushQuote();
     flushList();
     flushTable();
-    return html.join("\n") || "<p></p>";
+    var out = html.join("\n") || "<p></p>";
+    // Restore stashed fenced blocks. decodeSafeEntities runs first so a
+    // fence like `x = "&#x52;"` shows the real character, then
+    // escapeHtml makes any literal < and > inert (code and LaTeX render
+    // literally, with no double conversion). Token char built from its
+    // code point to keep the source free of invisible characters.
+    var fenceMark = String.fromCharCode(0xE000);
+    var fencePattern = new RegExp(
+        fenceMark + "(\\d+)" + fenceMark, "g");
+    out = out.replace(fencePattern, function (match, index) {
+        var raw = fenceStore[parseInt(index, 10)] || "";
+        var inner = raw.replace(/^```[^\n]*\n?/, "").replace(/```$/, "");
+        // Match the historical output: no trailing newline inside
+        // the code element.
+        inner = inner.replace(/\n$/, "");
+        return "<pre><code>" + escapeHtml(decodeSafeEntities(inner)) + "</code></pre>";
+    });
+    return out;
 }
 
 function formatReply(text) {
-    return renderMarkdown(text);
+    // System-generated citation markers are stripped before Markdown
+    // rendering so they never appear while streaming, after completion,
+    // or in re-rendered answers.
+    return renderMarkdown(stripSystemCitations(text));
 }
 
 function setBusy(busy) {
@@ -396,6 +584,11 @@ function buildPayload(message) {
     if (ctx.module_number) {
         payload.module_number = ctx.module_number;
     }
+    // Include recent conversation history (last 6 messages = 3 turns)
+    // so follow-up questions can reference previous context.
+    if (conversationHistory.length > 0) {
+        payload.history = conversationHistory.slice(-6);
+    }
     return payload;
 }
 
@@ -411,8 +604,17 @@ function updateStatus(info) {
             : provider === "gemini" ? "Gemini"
             : provider === "ollama" ? "Ollama (local)" : "AI");
     } else if (info.answer_kind === "fallback_excerpts") {
-        bits.push("⚠ fallback — AI unavailable" +
-            (info.error_code ? " (" + info.error_code + ")" : ""));
+        // User-safe: never render raw error codes or model names.
+        // The machine-readable error_code stays in the payload for
+        // developers (browser devtools / backend log).
+        // When a general explanation is available, show "Study bank"
+        // instead of "AI temporarily unavailable" since a valid
+        // answer was provided.
+        if (info.has_general_explanation) {
+            bits.push("Study bank");
+        } else {
+            bits.push("⚠ AI temporarily unavailable");
+        }
     } else if (info.engine) {
         bits.push(info.engine);
     }
@@ -439,6 +641,7 @@ async function sendMessage() {
     lastUserMessage = message;
     lastFailedMessage = null;
     addUserMessage(message);
+    conversationHistory.push({ role: "user", content: message });
     input.value = "";
     input.focus();
 
@@ -452,6 +655,7 @@ async function sendMessage() {
     let fullText = "";
     let sources = [];
     let streamed = false;
+    let serverSuggestions = [];
 
     const renderStreamed = function () {
         contentP.innerHTML = formatReply(fullText);
@@ -518,8 +722,12 @@ async function sendMessage() {
                         error_code: data.error_code,
                         mode: data.mode || getMode(),
                         latency_ms: data.latency_ms,
-                        cached: false
+                        cached: false,
+                        has_general_explanation: data.has_general_explanation || false
                     });
+                    if (Array.isArray(data.suggestions)) {
+                        serverSuggestions = data.suggestions;
+                    }
                     done = true;
                 } else if (eventName === "error") {
                     throw new Error(data.error || "streaming failed");
@@ -546,6 +754,9 @@ async function sendMessage() {
             const data = await response.json();
             fullText = data.answer || data.reply || "";
             sources = data.sources || [];
+            if (Array.isArray(data.suggestions)) {
+                serverSuggestions = data.suggestions;
+            }
             if (!fullText) {
                 throw new Error("empty answer");
             }
@@ -557,7 +768,8 @@ async function sendMessage() {
                 error_code: data.error_code,
                 mode: data.mode || getMode(),
                 latency_ms: data.latency_ms,
-                cached: data.cached
+                cached: data.cached,
+                has_general_explanation: data.has_general_explanation || false
             });
             streamed = true;
         } catch (fallbackError) {
@@ -575,8 +787,17 @@ async function sendMessage() {
     }
 
     if (streamed && fullText) {
-        addSourceCitations(sources);
         addMessageActions(thinking, function () { return fullText; });
+        // Track assistant answer in conversation history for follow-ups.
+        conversationHistory.push({ role: "assistant", content: fullText });
+
+        // Replace the static "Try asking" chips with dynamic suggestions
+        // after the first real answer, then append suggestions for this
+        // answer (avoiding duplicates).
+        document.querySelectorAll(".suggestion-area").forEach(function (el) {
+            el.remove();
+        });
+        addFollowupSuggestions(thinking, serverSuggestions);
     } else if (!fullText) {
         lastFailedMessage = message;
     }
@@ -597,12 +818,15 @@ function clearChat() {
     messages.querySelectorAll(".source-citations").forEach(function (el) {
         el.remove();
     });
+    // Reset conversation history.
+    conversationHistory = [];
     document.getElementById("chatInput").focus();
 }
 
 // Deep link (?q=...) from question lists: populate and answer at once.
 document.addEventListener("DOMContentLoaded", function () {
     setMode(getMode());
+    refreshStarterSuggestions();
     const ctx = getPageContext();
     if (ctx.q) {
         const input = document.getElementById("chatInput");
@@ -610,3 +834,39 @@ document.addEventListener("DOMContentLoaded", function () {
         sendMessage();
     }
 });
+
+// Replace the static "Try asking" chips with a balanced mixture drawn
+// from the student's actual subjects (see /api/chat/suggestions). A
+// subject-specific page context prioritizes that subject. Static
+// template chips remain visible until real ones arrive, so the area
+// is never empty if the request fails.
+function refreshStarterSuggestions() {
+    const wrap = document.getElementById("chatSuggestions");
+    if (!wrap) {
+        return;
+    }
+    let url = "/api/chat/suggestions";
+    const ctx = getPageContext();
+    if (ctx.subject_code) {
+        url += "?subject_code=" + encodeURIComponent(ctx.subject_code);
+    }
+    fetch(url).then(function (response) {
+        return response.ok ? response.json() : null;
+    }).then(function (data) {
+        if (!data || !Array.isArray(data.suggestions)
+                || data.suggestions.length === 0) {
+            return;  // keep the static template chips
+        }
+        wrap.innerHTML = "";
+        data.suggestions.forEach(function (item) {
+            const btn = document.createElement("button");
+            btn.type = "button";
+            btn.onclick = function () { askQuestion(item.text); };
+            btn.textContent = item.text;
+            if (item.subject_code) {
+                btn.title = item.subject_code;
+            }
+            wrap.appendChild(btn);
+        });
+    }).catch(function () { /* keep static chips */ });
+}

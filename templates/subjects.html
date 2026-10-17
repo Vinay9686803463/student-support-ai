@@ -124,60 +124,20 @@
 
 
         <nav class="semester-nav" aria-label="Semester selection">
-            <a href="{{ url_for('subjects', semester=1) }}" class="semester-box{% if semester == 1 %} active{% endif %}">1st Semester</a>
-            <a href="{{ url_for('subjects', semester=2) }}" class="semester-box{% if semester == 2 %} active{% endif %}">2nd Semester</a>
-            <a href="{{ url_for('subjects', semester=3) }}" class="semester-box{% if semester == 3 %} active{% endif %}">3rd Semester</a>
-            <a href="{{ url_for('subjects', semester=4) }}" class="semester-box{% if semester == 4 %} active{% endif %}">4th Semester</a>
+            <button type="button" class="semester-box locked" disabled aria-disabled="true" title="1st Semester is unavailable">1st Semester</button>
+            <button type="button" class="semester-box locked" disabled aria-disabled="true" title="2nd Semester is unavailable">2nd Semester</button>
+            <button type="button" class="semester-box locked" disabled aria-disabled="true" title="3rd Semester is unavailable">3rd Semester</button>
+            <button type="button" class="semester-box locked" disabled aria-disabled="true" title="4th Semester is unavailable">4th Semester</button>
             <a href="{{ url_for('subjects', semester=5) }}" class="semester-box{% if semester == 5 %} active{% endif %}">5th Semester</a>
+            <button type="button" class="semester-box locked" disabled aria-disabled="true" title="6th Semester is unavailable">6th Semester</button>
+            <button type="button" class="semester-box locked" disabled aria-disabled="true" title="7th Semester is unavailable">7th Semester</button>
+            <button type="button" class="semester-box locked" disabled aria-disabled="true" title="8th Semester is unavailable">8th Semester</button>
         </nav>
-
-
-        <div class="subjects-header">
-
-            <span class="badge">Semester {{ semester }} • VTU {{ user["branch"] }} • {{ user["scheme"] }} Scheme</span>
-
-            <h2>{% if semester == user["current_semester"] %}Your semester subjects{% else %}Semester {{ semester }} subjects{% endif %}</h2>
-
-            <p>
-                {{ total_subjects }} subjects available.
-                Open any subject for units, important questions and resources.
-            </p>
-
-        </div>
-
-
-        <div class="subject-stats">
-
-            <div class="subject-stat-card">
-                <div class="subject-stat-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 6.042A8.967 8.967 0 006 3.75c-1.052 0-2.062.18-3 .512v14.25A8.987 8.987 0 016 18c2.305 0 4.408.867 6 2.292m0-14.25a8.966 8.966 0 016-2.292c1.052 0 2.062.18 3 .512v14.25A8.987 8.987 0 0018 18a8.967 8.967 0 00-6 2.292m0-14.25v14.25"/></svg></div>
-                <div>
-                    <span>Total Subjects</span>
-                    <strong>{{ total_subjects }}</strong>
-                </div>
-            </div>
-
-            <div class="subject-stat-card">
-                <div class="subject-stat-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4.26 10.147a60.436 60.436 0 00-.491 6.347A48.627 48.627 0 0112 20.904a48.627 48.627 0 018.232-4.41 60.46 60.46 0 00-.491-6.347m-15.482 0a50.57 50.57 0 00-2.658-.813A59.905 59.905 0 0112 3.493a59.902 59.902 0 0110.399 5.84c-.896.248-1.783.52-2.658.814m-15.482 0A50.697 50.697 0 0112 13.489a50.702 50.702 0 017.74-3.342M6.75 15a.75.75 0 100-1.5.75.75 0 000 1.5zm0 0v-3.675A55.378 55.378 0 0112 8.443m-7.007 11.55A5.981 5.981 0 006.75 15.75v-1.5"/></svg></div>
-                <div>
-                    <span>Scheme</span>
-                    <strong>{{ user["scheme"] }}</strong>
-                </div>
-            </div>
-
-            <div class="subject-stat-card">
-                <div class="subject-stat-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9.879 7.519c1.171-1.025 3.071-1.025 4.242 0 1.172 1.025 1.172 2.687 0 3.712-.203.179-.43.326-.67.442-.745.361-1.45.999-1.45 1.827v.75M21 12a9 9 0 11-18 0 9 9 0 0118 0zm-9 5.25h.008v.008H12v-.008z"/></svg></div>
-                <div>
-                    <span>Semester</span>
-                    <strong>{{ user["current_semester"] }}</strong>
-                </div>
-            </div>
-
-        </div>
 
 
         <section class="section">
 
-            {% if subjects or alternatives or electives or professional_electives %}
+            {% if subjects or alternatives or electives %}
 
                 {% if subjects %}
                 <div class="subjects-grid">
@@ -338,60 +298,8 @@
                 {% endif %}
 
 
-                {% if professional_electives %}
-
-                <div class="section-heading" style="margin-top: 2.5rem;">
-                    <div>
-                        <h2>Professional Elective</h2>
-                        <p>Choose one professional elective from the available options.</p>
-                    </div>
-                </div>
-
-                <div class="subjects-grid">
-
-                    {% for subject in professional_electives %}
-
-                        <div class="subject-card">
-
-                            <div class="subject-card-top">
-
-                                <div class="subject-icon">
-                                    {{ subject.icon or "📚" }}
-                                </div>
-
-                                <span class="subject-code">
-                                    {{ subject.code }}
-                                </span>
-
-                            </div>
-
-                            <h3>
-                                {{ subject.name }}
-                            </h3>
-
-                            <p>
-                                {{ subject.description or "Professional elective subject. Choose one option from this group." }}
-                            </p>
-
-                            <div class="subject-info">
-                                <span>📚 {{ subject.credits or 4 }} Credits</span>
-                                <span>🎓 Sem {{ subject.semester }}</span>
-                            </div>
-
-                            <a
-                                href="{{ url_for('subject_detail', subject_code=subject.code, semester=semester) }}"
-                                class="subject-button"
-                            >
-                                View Subject →
-                            </a>
-
-                        </div>
-
-                    {% endfor %}
-
-                </div>
-
-                {% endif %}
+                {# Professional Elective section removed per user request.
+                   BCS515C (Unix System Programming) moved to regular subjects. #}
 
 
             {% else %}

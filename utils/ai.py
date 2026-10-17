@@ -23,7 +23,7 @@ def gemini_available():
     if not _gemini_key():
         return False
     try:
-        import google.generativeai  # noqa: F401
+        from google import genai  # noqa: F401
         return True
     except Exception:
         return False
@@ -42,13 +42,30 @@ def _build_grounded_prompt(message, context):
         f"- {_format_question(q)}" for q in questions[:20]
     )
 
+    history = context.get("history") or []
+    history_lines = ""
+    if history:
+        lines = []
+        for msg in history[-6:]:
+            role = (msg.get("role") or "").strip().lower() if isinstance(msg, dict) else ""
+            content = (msg.get("content") or "").strip() if isinstance(msg, dict) else str(msg)
+            if role in ("user", "assistant") and content:
+                label = "Student" if role == "user" else "Assistant"
+                if len(content) > 300:
+                    content = content[:300] + "..."
+                lines.append(f"{label}: {content}")
+        if lines:
+            history_lines = "Conversation history:\n" + "\n".join(lines) + "\n\n"
+
     return (
-        "You are Student Support AI, a friendly tutor for VTU CSE undergraduates. "
-        "Answer clearly and concisely (under 220 words), using short bullet points "
-        "where helpful. Stay on academic topics; this is a study app.\n\n"
+        "You are Student Support AI, an expert tutor for VTU CSE undergraduates. "
+        "Generate detailed, thorough, well-structured answers with headings, "
+        "examples, tables, and code blocks. Use Markdown formatting. Be "
+        "comprehensive but accurate. Stay on academic topics; this is a study app.\n\n"
         f"Student name: {context.get('name') or 'Student'}\n"
         f"Current semester subjects:\n{subject_lines or '(unknown)'}\n\n"
         f"Important-question bank (may be relevant):\n{bank_lines or '(empty)'}\n\n"
+        f"{history_lines}"
         f"Student question: {message}"
     )
 
@@ -58,9 +75,9 @@ def _gemini_answer(message, context):
 
     Used when AI_PROVIDER=gemini (the default provider); skipped otherwise.
     """
-    import google.generativeai as genai
+    from google import genai
 
-    genai.configure(api_key=_gemini_key())
+    client = genai.Client(api_key=_gemini_key())
 
     prompt = _build_grounded_prompt(message, context)
 
@@ -68,10 +85,9 @@ def _gemini_answer(message, context):
 
     for model_name in _model_candidates():
         try:
-            model = genai.GenerativeModel(model_name)
-            response = model.generate_content(
-                prompt,
-                request_options={"timeout": 60},
+            response = client.models.generate_content(
+                model=model_name,
+                contents=prompt,
             )
             text = (getattr(response, "text", "") or "").strip()
             if text:
@@ -406,8 +422,8 @@ def generate_answer(message, context=None):
             try:
                 openai_reply = _openai.generate_answer(
                     _build_grounded_prompt(text, context),
-                    timeout=45,
-                    max_tokens=800,
+                    timeout=60,
+                    max_tokens=1200,
                 )
                 if openai_reply:
                     return openai_reply

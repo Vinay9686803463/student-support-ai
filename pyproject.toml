@@ -1,0 +1,5 @@
+[project]
+name = "app"
+version = "0.1.0"
+dependencies = [ "flask", "flask-sqlalchemy", "python-dotenv", "boto3", "sqlalchemy", "gunicorn", "psycopg[binary]", "pypdf", "google-genai", "openai" ]
+requires-python = "~=3.14.0"
