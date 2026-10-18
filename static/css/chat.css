@@ -1,65 +1,177 @@
-/* Source citations style */
+/* Sources are never shown in the chat UI; citation DOM is dropped in
+   JS (see chat.js). No .source-citations styles on purpose.
+*/
+/*
+.source-citations { ... }  (Intentionally empty.)
+*/
 
-.source-citations {
-    margin-top: 0.5rem;
-    margin-bottom: 1rem;
-    padding-top: 0.5rem;
-    border-top: 1px solid var(--border-color, #dee2e6);
-    font-size: 0.85rem;
-    color: #6c757d;
+/* Chat input focus: subtle theme-neutral indicator, no blue glow.
+
+   The global accessibility rule later in style.css adds a 2px blue
+   -primary outline to every textarea:focus-visible; that outranks the
+   base `.chat-input-box textarea { outline: none }` rule. These rules
+   win by specificity and redirect focus on THIS field only.
+*/
+
+.chat-input-box:focus-within {
+    border-color: rgba(59, 130, 246, 0.45);
+    box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.15);
 }
 
-.source-citations strong {
-    display: block;
-    margin-bottom: 0.25rem;
-    color: #495057;
+.chat-input-box textarea:focus,
+.chat-input-box textarea:focus-visible,
+.chat-input-box textarea:active {
+    outline: none;
+    box-shadow: none;
 }
 
-.source-citations span {
-    display: block;
-    margin-bottom: 0.15rem;
-}
+/* Dynamic "Suggested follow-up questions" section after each AI answer */
 
-.source-citations span:last-child {
-    margin-bottom: 0;
-}
-
-/* Keep existing overrides minimal */
-
-/* Dynamic follow-up suggestions */
 .followup-suggestions {
-    margin: 10px 0 15px 0;
-    padding: 8px 12px;
-    background: var(--card, #f8f9fa);
-    border-radius: 8px;
+    margin: 12px 0 16px 48px;
 }
 
 .followup-label {
-    font-size: 0.85rem;
-    font-weight: 600;
-    color: var(--muted, #666);
-    margin: 0 0 6px 0;
+    margin: 0 0 8px;
+    color: var(--muted);
+    font-size: 11px;
 }
 
 .followup-suggestions .suggestions {
     display: flex;
     flex-wrap: wrap;
-    gap: 6px;
+    gap: 8px;
 }
 
 .followup-suggestions .suggestion-chip {
-    padding: 6px 12px;
-    border: 1px solid var(--border, #ddd);
-    border-radius: 16px;
-    background: var(--bg, #fff);
-    color: var(--text, #333);
-    font-size: 0.85rem;
+    padding: 8px 12px;
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 9px;
+    color: var(--text);
+    font-size: 11px;
     cursor: pointer;
-    transition: background 0.15s, border-color 0.15s;
+    transition: 0.2s;
+    text-align: left;
 }
 
 .followup-suggestions .suggestion-chip:hover {
-    background: var(--primary, #007bff);
-    color: #fff;
-    border-color: var(--primary, #007bff);
+    border-color: rgba(59, 130, 246, 0.45);
+    color: var(--primary-light);
+    background: rgba(59, 130, 246, 0.10);
+}
+
+/* Mobile: full-width chips for easy tapping */
+@media (max-width: 650px) {
+    .followup-suggestions {
+        margin-left: 0;
+    }
+    .followup-suggestions .suggestion-chip {
+        width: 100%;
+        text-align: left;
+    }
+}
+
+/* ============================================================
+   REFERENCE REDESIGN LAYER — vtudeveloper.in (chat surface)
+   Chat-specific theme, loaded last so it wins the cascade for
+   message bubbles, input, chips and buttons.
+   ============================================================ */
+
+/* Assistant bubble: layered dark card with blue-tinted border. */
+.ai-message .message-content {
+    background:
+        linear-gradient(180deg, rgba(59, 130, 246, 0.06), rgba(255, 255, 255, 0.015) 44%),
+        #08080d;
+    border: 1px solid rgba(255, 255, 255, 0.07);
+    border-radius: 14px;
+}
+
+/* User bubble: the reference blue→cyan button gradient. */
+.user-message .message-content {
+    background: linear-gradient(135deg, #3b82f6, #06b6d4);
+    border-color: transparent;
+    border-radius: 14px;
+    box-shadow: 0 10px 26px rgba(59, 130, 246, 0.35);
+}
+
+/* Assistant name row tone inside bubbles. */
+.ai-message .message-content > strong {
+    color: #93c5fd;
+}
+
+/* Chat content: keep readable aria of the reference body text. */
+.message-content p,
+.message-content li {
+    color: rgba(255, 255, 255, 0.85);
+}
+
+.message-content pre {
+    background: #000000;
+    border-color: rgba(255, 255, 255, 0.08);
+}
+
+.message-content code { color: #93c5fd; }
+
+.message-content th, .message-content td {
+    border-color: rgba(255, 255, 255, 0.08);
+}
+
+.message-content th {
+    background: rgba(59, 130, 246, 0.10);
+    color: #93c5fd;
+}
+
+.message-content blockquote {
+    background: rgba(59, 130, 246, 0.06);
+    border-left-color: var(--primary);
+    color: rgba(255, 255, 255, 0.75);
+}
+
+/* Starter + follow-up suggestion chips. */
+.suggestions button,
+.followup-suggestions .suggestion-chip {
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    color: rgba(255, 255, 255, 0.8);
+    border-radius: 10px;
+}
+
+.suggestions button:hover,
+.followup-suggestions .suggestion-chip:hover {
+    background: rgba(59, 130, 246, 0.10);
+    border-color: rgba(59, 130, 246, 0.45);
+    color: var(--primary-light);
+}
+
+/* Input chrome = reference search pill. */
+.chat-input-box {
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 12px;
+}
+
+.chat-input-box textarea { color: #ffffff; }
+
+.chat-input-box textarea::placeholder {
+    color: rgba(255, 255, 255, 0.3);
+}
+
+.send-button {
+    background: linear-gradient(135deg, #7c3aed 0%, #3b82f6 55%, #06b6d4 100%);
+    border-radius: 50%;
+    box-shadow:
+        0 4px 14px rgba(59, 130, 246, 0.45),
+        0 0 0 4px rgba(255, 255, 255, 0.06);
+}
+
+.send-button:disabled {
+    opacity: 0.55;
+    filter: none;
+    box-shadow: none;
+}
+
+.stop-button {
+    background: #ef4444 !important;
+    border-radius: 50%;
 }
