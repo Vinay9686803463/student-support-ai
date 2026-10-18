@@ -182,12 +182,25 @@ function stripSystemCitations(text) {
     // ("1. [3] IEEE 802.11 ..."), topic markers like [2]-modulo, and
     // bracket links are untouched — the pattern must literally start
     // with the word "Source" inside brackets.
-    return (text || "").replace(
+    var source = String(text || "");
+    var store = [];
+    function stash(value) {
+        store.push(value);
+        return "\uE000S" + (store.length - 1) + "\uE000";
+    }
+    // Protect code fences and inline code so the cleanup cannot alter
+    // their contents (e.g. "int main()" must keep its parentheses).
+    source = source.replace(/```[\s\S]*?(?:```|$)/g, stash);
+    source = source.replace(/`[^`\n]+`/g, stash);
+    source = source.replace(
         /\[\s*Sources?\s*(?::\s*\d+(?:\s*(?:,|;|and)\s*\d+)*|\s+\d+(?:\s*,\s*Sources?\s*\d+)*)\s*\]/gi,
         ""
     ).replace(/[ \t]+([.,;:])/g, "$1")  // "answer . " -> "answer."
         .replace(/[ \t]{2,}/g, " ")     // collapse gaps left by markers
         .replace(/\(\s*\)/g, "");
+    return source.replace(/\uE000S(\d+)\uE000/g, function (match, index) {
+        return store[parseInt(index, 10)];
+    });
 }
 
 function addMessageActions(messageEl, getText) {
@@ -238,15 +251,45 @@ var NAMED_ENTITIES = {
     amp: "&", lt: "<", gt: ">", quot: '"', apos: "'",
     nbsp: " ", copy: "©", reg: "®",
     hellip: "…", mdash: "—", ndash: "–",
-    laquo: "«", raquo: "»"
+    laquo: "«", raquo: "»",
+    deg: "°", times: "×", divide: "÷", plusmn: "±",
+    frac12: "½", frac14: "¼", frac34: "¾",
+    sup2: "²", sup3: "³", micro: "µ",
+    alpha: "α", beta: "β", gamma: "γ", delta: "δ",
+    pi: "π", sigma: "σ", theta: "θ", lambda: "λ", omega: "ω",
+    infin: "∞", ne: "≠", le: "≤", ge: "≥",
+    rarr: "→", larr: "←", uarr: "↑", darr: "↓", harr: "↔",
+    check: "✓", cross: "✗", bull: "•", dagger: "†", prime: "′",
+    euro: "€", pound: "£", yen: "¥", cent: "¢",
+    sect: "§", para: "¶", middot: "·"
 };
+
+function _stashValue(store, value) {
+    store.push(value);
+    return "\uE000" + (store.length - 1) + "\uE000";
+}
 
 function decodeSafeEntities(text) {
     // Decode ONLY safe entities the model sometimes emits literally
-    // (e.g. "&#x52;equirements"): numeric refs plus a small named
-    // allowlist. Runs BEFORE escaping, so decoded "<" can never
-    // become markup (XSS-safe). Unknown entities stay untouched.
-    return text
+    // (e.g. "&#x52;equirements"). Inline code and math are stashed
+    // first so their contents are never decoded (preserving entity-like
+    // text inside code/examples). Unknown entities stay untouched.
+    if (!text) {
+        return "";
+    }
+    var store = [];
+    var protectedText = String(text)
+        .replace(/`[^`\n]+`/g, function (match) {
+            return _stashValue(store, match);
+        })
+        .replace(/\$\$[^$\n]+\$\$/g, function (match) {
+            return _stashValue(store, match);
+        })
+        .replace(/\$[^$\n]+\$/g, function (match) {
+            return _stashValue(store, match);
+        });
+
+    protectedText = protectedText
         .replace(/&#([0-9]{1,7});/g, function (match, digits) {
             var code = parseInt(digits, 10);
             return (code > 0 && code < 0x110000)
@@ -257,216 +300,368 @@ function decodeSafeEntities(text) {
             return (code > 0 && code < 0x110000)
                 ? String.fromCharCode(code) : match;
         })
-        .replace(/&(amp|lt|gt|quot|apos|nbsp|copy|reg|hellip|mdash|ndash|laquo|raquo);/g,
+        .replace(/&(amp|lt|gt|quot|apos|nbsp|copy|reg|hellip|mdash|ndash|laquo|raquo|deg|times|divide|plusmn|frac12|frac14|frac34|sup2|sup3|micro|alpha|beta|gamma|delta|pi|sigma|theta|lambda|omega|infin|ne|le|ge|rarr|larr|uarr|darr|harr|check|cross|bull|dagger|prime|euro|pound|yen|cent|sect|para|middot);/g,
             function (match, name) {
-                return NAMED_ENTITIES[name];
+                return NAMED_ENTITIES[name] || match;
             });
+
+    return protectedText.replace(/\uE000(\d+)\uE000/g, function (match, index) {
+        return store[parseInt(index, 10)];
+    });
+}
+
+function stripInternalCommentary(text) {
+    // Remove sentences that only describe internal retrieval status.
+    // These must never be shown to students.
+    var out = String(text || "");
+    out = out.replace(
+        /(^|[.!?]\s+|\n)\s*(?:note\s*:\s*)?(?:based on\s+)?(?:according to\s+)?(?:the\s+)?retrieved\s+(?:study\s+)?(?:context|materials|passages?|sources?|documents?)[^\n.]*\./gi,
+        "$1"
+    );
+    out = out.replace(
+        /(^|[.!?]\s+|\n)\s*(?:note\s*:\s*)?(?:the\s+)?(?:study\s+)?sources\s+are\s+insufficient[^\n.]*\./gi,
+        "$1"
+    );
+    out = out.replace(
+        /(^|[.!?]\s+|\n)\s*(?:note\s*:\s*)?(?:based on\s+)?(?:according to\s+)?(?:the\s+)?retrieved\s+(?:study\s+)?(?:context|materials|passages?|sources?|documents?),?\s*/gi,
+        "$1"
+    );
+    out = out.replace(/\n{3,}/g, "\n\n");
+    return out;
 }
 
 function unescapeMarkdownPunct(s) {
-    // Drop backslashes the model adds before ASCII punctuation
-    // ("\\#" -> "#", "\\*" -> "*"). Backslash+letter sequences
-    // (LaTeX like \\frac) are intentionally left alone.
+    // Kept for compatibility. The inline renderer handles escapes now;
+    // this is only used for block-detection normalization.
     return s.replace(/\\([\\!"#$%&'()*+,\-./:;<=>?@[\\\]^_`{|}~])/g, "$1");
 }
 
-function renderInline(text) {
-    // Inline markup on already-escaped text. `code` spans are split
-    // out first so unescaping, emphasis padding, and bold/italic
-    // never touch code content (LaTeX and examples stay literal).
-    var segments = text.split(/(`[^`\n]+`)/g);
-    for (var i = 0; i < segments.length; i++) {
-        if (i % 2 === 1) {
-            segments[i] = "<code>" + segments[i].slice(1, -1) + "</code>";
-        } else {
-            segments[i] = renderInlineText(segments[i]);
-        }
-    }
-    return segments.join("");
+function _normalizeEmphasisSpacing(text) {
+    // Insert a space between a word character and an emphasis marker when
+    // the two are glued together (e.g. "the**Agile**model"). Punctuation,
+    // parentheses, brackets and whitespace are left untouched so we never
+    // add a space before a comma or period.
+    var out = text.replace(/([A-Za-z0-9])(\*{1,3})/g, "$1 $2");
+    out = out.replace(/(\*{1,3})([A-Za-z0-9])/g, "$1 $2");
+    out = out.replace(/([A-Za-z0-9])(_{1,3})/g, "$1 $2");
+    out = out.replace(/(_{1,3})([A-Za-z0-9])/g, "$1 $2");
+    return out;
 }
 
 function renderInlineText(text) {
-    // Split on ** to separate bold spans from plain text.
-    var parts = text.split('**');
-    var result = '';
-
-    for (var i = 0; i < parts.length; i++) {
-        if (i % 2 === 1) {
-            // Bold part
-            result += '<strong>' + parts[i] + '</strong>';
-        } else {
-            // Non-bold part: pad around adjacent bold spans and process
-            // italic within this segment.
-            var part = parts[i];
-            // Pad before if previous part was bold and ended with non-space
-            if (i > 0 && parts[i - 1] && parts[i - 1][parts[i - 1].length - 1] !== ' ') {
-                part = ' ' + part;
-            }
-            // Pad after if next part is bold and starts with non-space
-            if (i < parts.length - 1 && parts[i + 1] && parts[i + 1][0] !== ' ' && part[part.length - 1] !== ' ') {
-                part = part + ' ';
-            }
-            // Process italic within non-bold part
-            part = part.replace(/(^|[\s(>])\*(\S(?:[^*\n]*\S)?)\*(?=[\s\S])/g,
-                "$1<em>$2</em>");
-            result += part;
-        }
+    if (!text) {
+        return "";
     }
-    return result;
+    var store = [];
+    function stash(value) {
+        store.push(value);
+        return "\uE000" + (store.length - 1) + "\uE000";
+    }
+
+    // 1. Protect inline code, math and safe links so emphasis rules never
+    //    touch them.
+    text = text.replace(/`[^`\n]+`/g, function (match) {
+        return stash("<code>" + match.slice(1, -1) + "</code>");
+    });
+    text = text.replace(/\$\$[\s\S]*?\$\$/g, function (match) {
+        return stash(match);
+    });
+    text = text.replace(/\$[^$\n]+\$/g, function (match) {
+        return stash(match);
+    });
+    text = text.replace(/\[([^\]\n]+)\]\((https?:\/\/[^\s)]+)\)/g,
+        function (match, label, url) {
+            var safeUrl = url.replace(/"/g, "%22");
+            return stash('<a href="' + safeUrl +
+                '" target="_blank" rel="noopener">' + label + '</a>');
+        });
+
+    // 2. Protect escaped punctuation as literal characters.
+    text = text.replace(/\\([\\`*_{}\[\]#+\-.!~|>])/g, function (match, ch) {
+        return stash(ch);
+    });
+
+    // 3. Emphasis (triple first, then double, then single).
+    text = text.replace(/\*\*\*(?=\S)([\s\S]*?\S)\*\*\*/g, function (match, inner) {
+        return '<strong><em>' + renderInlineText(inner) + '</em></strong>';
+    });
+    text = text.replace(/\*\*(?=\S)([\s\S]*?\S)\*\*/g, function (match, inner) {
+        return '<strong>' + renderInlineText(inner) + '</strong>';
+    });
+    text = text.replace(/\*([^*\n]+?)\*/g,
+        function (match, inner) {
+            return '<em>' + renderInlineText(inner) + '</em>';
+        });
+    text = text.replace(/___(?=\S)([\s\S]*?\S)___/g, function (match, inner) {
+        return '<strong><em>' + renderInlineText(inner) + '</em></strong>';
+    });
+    text = text.replace(/__(?=\S)([\s\S]*?\S)__/g, function (match, inner) {
+        return '<strong>' + renderInlineText(inner) + '</strong>';
+    });
+    text = text.replace(/(^|[\s(])_([^_\n]+?)_(?=[\s).,;:!?]|$)/g,
+        function (match, prefix, inner) {
+            return prefix + '<em>' + renderInlineText(inner) + '</em>';
+        });
+
+    // 4. Restore protected content.
+    text = text.replace(/\uE000(\d+)\uE000/g, function (match, index) {
+        return store[parseInt(index, 10)];
+    });
+
+    // 5. Add spaces between word characters and emphasis tags. This is
+    //    done on the generated HTML so punctuation, parentheses and
+    //    brackets are never given a bogus leading space.
+    text = text.replace(/([A-Za-z0-9])<strong>/g, "$1 <strong>");
+    text = text.replace(/<\/strong>([A-Za-z0-9])/g, "</strong> $1");
+    text = text.replace(/([A-Za-z0-9])<em>/g, "$1 <em>");
+    text = text.replace(/<\/em>([A-Za-z0-9])/g, "</em> $1");
+    return text;
+}
+
+function renderInline(text) {
+    return renderInlineText(text);
+}
+
+function _isTableSeparator(line) {
+    return /^\|?[\s:|-]+\|[\s:|.-]*$/.test(line) && line.indexOf("-") !== -1;
+}
+
+function _renderListTree(items) {
+    if (!items.length) {
+        return "";
+    }
+    var root = { children: [] };
+    var stack = [{ indent: -1, node: root }];
+    items.forEach(function (item) {
+        while (stack.length > 1) {
+            var peek = stack[stack.length - 1];
+            if (peek.node.tag) {
+                if (item.indent < peek.indent) {
+                    stack.pop();
+                    continue;
+                }
+                break;
+            }
+            if (item.indent <= peek.indent) {
+                stack.pop();
+                continue;
+            }
+            break;
+        }
+        var top = stack[stack.length - 1];
+        if (top.node.tag && item.indent <= top.indent) {
+            var existing = { text: item.text, children: [] };
+            top.node.children.push(existing);
+            stack.push({ indent: item.indent, node: existing });
+            return;
+        }
+        if (item.indent > top.indent) {
+            var list = {
+                tag: item.ordered ? "ol" : "ul",
+                start: item.number,
+                children: []
+            };
+            top.node.children.push(list);
+            stack.push({ indent: item.indent, node: list });
+            top = stack[stack.length - 1];
+        }
+        var node = { text: item.text, children: [] };
+        top.node.children.push(node);
+        stack.push({ indent: item.indent, node: node });
+    });
+
+    function renderChildren(children) {
+        var out = "";
+        children.forEach(function (child) {
+            if (child.tag) {
+                out += renderListNode(child);
+            } else {
+                out += "<li>" + (child.text ? renderInline(child.text) : "") +
+                    renderChildren(child.children) + "</li>";
+            }
+        });
+        return out;
+    }
+    function renderListNode(node) {
+        var startAttr = (node.start && node.start > 1)
+            ? ' start="' + node.start + '"' : "";
+        return "<" + node.tag + startAttr + ">" +
+            renderChildren(node.children) + "</" + node.tag + ">";
+    }
+    return renderChildren(root.children);
 }
 
 function renderMarkdown(text) {
     // Small block renderer for model answers: fenced code, headings,
-    // bullet/numbered lists, tables, rules, paragraphs. Input is
-    // escaped first; single newlines inside a paragraph become <br>.
-    // HTML entities are decoded before escaping so they render as
-    // normal characters instead of literal codes.
+    // bullet/numbered/nested lists, tables, blockquotes, rules,
+    // paragraphs. Fenced blocks are stashed raw so entities inside them
+    // are preserved; the remaining text is decoded once, internal
+    // commentary is removed, and only then escaped for HTML.
     var fenceStore = [];
-    var remainder = text.replace(/```[\s\S]*?(?:```|$)/g,
+    var remainder = String(text || "").replace(/```[\s\S]*?(?:```|$)/g,
         function (block) {
             fenceStore.push(block);
-            return "\uE000" + (fenceStore.length - 1) + "\uE000";
+            return "\uE000F" + (fenceStore.length - 1) + "\uE000";
         });
-    var lines = escapeHtml(decodeSafeEntities(remainder)).split("\n");
+
+    var decoded = decodeSafeEntities(remainder);
+    var normalized = stripInternalCommentary(decoded);
+    var lines = escapeHtml(normalized).split("\n");
     var html = [];
-    var inCode = false;
-    var codeBuf = [];
-    var listTag = null;
     var paraBuf = [];
+    var listBuf = [];
     var tableBuf = [];
+    var quoteBuf = [];
 
     function flushPara() {
         if (paraBuf.length) {
-            html.push("<p>" + renderInline(paraBuf.join(" ")) + "</p>");
+            html.push("<p>" + renderInline(paraBuf.join("<br>")) + "</p>");
             paraBuf = [];
         }
     }
     function flushList() {
-        if (listTag) {
-            html.push("</" + listTag + ">");
-            listTag = null;
+        if (!listBuf.length) {
+            return;
         }
+        html.push(_renderListTree(listBuf));
+        listBuf = [];
     }
     function flushTable() {
         if (!tableBuf.length) {
             return;
         }
-        var hasSeparator = tableBuf.some(function (line) {
-            return /^\|?[\s:|-]+\|[\s:|.-]*$/.test(line);
+        var rows = tableBuf.filter(function (line) {
+            return !_isTableSeparator(line);
         });
-        if (!hasSeparator || tableBuf.length < 2) {
+        if (rows.length < 2) {
             paraBuf = paraBuf.concat(tableBuf);
             tableBuf = [];
             flushPara();
             return;
         }
-        var rows = tableBuf.filter(function (line) {
-            return !/^\|?[\s:|-]+\|[\s:|.-]*$/.test(line);
-        });
         var out = ["<table>"];
         rows.forEach(function (line, index) {
             var cells = line.replace(/^\||\|$/g, "").split("|");
             var tag = index === 0 ? "th" : "td";
             out.push("<tr>" + cells.map(function (cell) {
-                return "<" + tag + ">" + renderInline(cell.trim()) + "</" + tag + ">";
+                return "<" + tag + ">" + renderInline(cell.trim()) +
+                    "</" + tag + ">";
             }).join("") + "</tr>");
         });
         out.push("</table>");
         html.push(out.join(""));
         tableBuf = [];
     }
+    function flushQuote() {
+        if (!quoteBuf.length) {
+            return;
+        }
+        var inner = quoteBuf.map(function (line) {
+            return renderInline(line);
+        }).join("<br>");
+        html.push("<blockquote>" + inner + "</blockquote>");
+        quoteBuf = [];
+    }
 
-    lines.forEach(function (line) {
-        var trimmed = line.trim();
-        // Unescape model over-escaping ("\\#", "\\*") before block
-        // detection so headings/lists/tables are recognized.
-        var codeParts = trimmed.split(/(`[^`\n]+`)/g);
-        var scan = codeParts.map(function (part, index) {
-            return (index % 2 === 1) ? part : unescapeMarkdownPunct(part);
-        }).join("");
-        if (scan.indexOf("```") === 0) {
-            if (inCode) {
-                html.push("<pre><code>" + codeBuf.join("\n") + "</code></pre>");
-                codeBuf = [];
-                inCode = false;
-            } else {
-                flushPara();
-                flushList();
-                flushTable();
-                inCode = true;
-            }
-            return;
-        }
-        if (inCode) {
-            codeBuf.push(line);
-            return;
-        }
-        if (scan.indexOf("|") !== -1) {
+    for (var i = 0; i < lines.length; i++) {
+        var line = lines[i];
+        var fenceMatch = line.match(/^\uE000F(\d+)\uE000$/);
+        if (fenceMatch) {
             flushPara();
             flushList();
-            tableBuf.push(scan);
-            return;
+            flushTable();
+            flushQuote();
+            html.push(line);
+            continue;
         }
-        flushTable();
-        var heading = scan.match(/^(#{1,4})\s+(.*)$/);
+
+        var trimmed = line.trim();
+        if (!trimmed) {
+            flushPara();
+            flushList();
+            flushTable();
+            flushQuote();
+            continue;
+        }
+
+        if (trimmed.indexOf(">") === 0) {
+            flushPara();
+            flushList();
+            flushTable();
+            quoteBuf.push(trimmed.replace(/^>\s?/, ""));
+            continue;
+        }
+        if (quoteBuf.length) {
+            flushQuote();
+        }
+
+        if (/^(-{3,}|\*{3,}|_{3,})$/.test(trimmed)) {
+            flushPara();
+            flushList();
+            flushTable();
+            html.push("<hr>");
+            continue;
+        }
+
+        var heading = trimmed.match(/^(#{1,6})\s+(.*)$/);
         if (heading) {
             flushPara();
             flushList();
-            var level = Math.min(heading[1].length + 1, 6);
-            html.push("<h" + level + ">" + renderInline(heading[2]) + "</h" + level + ">");
-            return;
+            flushTable();
+            var level = heading[1].length;
+            html.push("<h" + level + ">" + renderInline(heading[2]) +
+                "</h" + level + ">");
+            continue;
         }
-        if (/^---+$/.test(scan)) {
-            flushPara();
-            flushList();
-            html.push("<hr>");
-            return;
-        }
-        var bullet = scan.match(/^[-*]\s+(.*)$/);
-        if (bullet) {
-            flushPara();
-            if (listTag !== "ul") {
+
+        if (trimmed.indexOf("|") !== -1) {
+            var isSep = _isTableSeparator(trimmed);
+            var nextIsSep = (i + 1 < lines.length) &&
+                _isTableSeparator(lines[i + 1].trim());
+            if (isSep || nextIsSep || tableBuf.length) {
+                flushPara();
                 flushList();
-                html.push("<ul>");
-                listTag = "ul";
+                flushQuote();
+                tableBuf.push(trimmed);
+                continue;
             }
-            html.push("<li>" + renderInline(bullet[1]) + "</li>");
-            return;
         }
-        var ordered = scan.match(/^\d+[.)]\s+(.*)$/);
-        if (ordered) {
+
+        var bullet = trimmed.match(/^([-*+])\s+(.*)$/);
+        var ordered = trimmed.match(/^(\d{1,9})[.)]\s+(.*)$/);
+        if (bullet || ordered) {
             flushPara();
-            if (listTag !== "ol") {
-                flushList();
-                html.push("<ol>");
-                listTag = "ol";
-            }
-            html.push("<li>" + renderInline(ordered[1]) + "</li>");
-            return;
+            flushTable();
+            flushQuote();
+            var indent = line.match(/^[\t ]*/)[0]
+                .replace(/\t/g, "    ").length;
+            listBuf.push({
+                indent: indent,
+                ordered: !!ordered,
+                number: ordered ? parseInt(ordered[1], 10) : null,
+                text: bullet ? bullet[2] : ordered[2]
+            });
+            continue;
         }
-        if (!scan) {
-            flushPara();
-            flushList();
-            return;
-        }
+
         flushList();
-        paraBuf.push(scan);
-    });
-    if (inCode) {
-        html.push("<pre><code>" + codeBuf.join("\n") + "</code></pre>");
+        flushTable();
+        flushQuote();
+        paraBuf.push(trimmed);
     }
+
     flushPara();
     flushList();
     flushTable();
+    flushQuote();
+
     var out = html.join("\n") || "<p></p>";
-    // Restore stashed fenced blocks.
-    var fenceMark = String.fromCharCode(0xE000);
-    var fencePattern = new RegExp(fenceMark + "(\\d+)" + fenceMark, "g");
-    out = out.replace(fencePattern, function (match, index) {
+    out = out.replace(/\uE000F(\d+)\uE000/g, function (match, index) {
         var raw = fenceStore[parseInt(index, 10)] || "";
-        var inner = raw.replace(/^```[^\n]*\n?/, "").replace(/```$/, "");
-        inner = inner.replace(/\n$/, "");
-        return "<pre><code>" + escapeHtml(decodeSafeEntities(inner)) + "</code></pre>";
+        var inner = raw.replace(/^```[^\n]*\n?/, "")
+            .replace(/```\s*$/, "")
+            .replace(/\n$/, "");
+        return "<pre><code>" + escapeHtml(inner) + "</code></pre>";
     });
     return out;
 }
@@ -474,8 +669,10 @@ function renderMarkdown(text) {
 function formatReply(text) {
     // System-generated citation markers are stripped before Markdown
     // rendering so they never appear while streaming, after completion,
-    // or in re-rendered answers.
-    return renderMarkdown(stripSystemCitations(text));
+    // or in re-rendered answers. Entity decoding, internal-commentary
+    // removal and Markdown-aware spacing all happen in renderMarkdown.
+    var stripped = stripSystemCitations(text);
+    return renderMarkdown(stripped);
 }
 
 function setBusy(busy) {
