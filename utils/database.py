@@ -530,6 +530,186 @@ class UserPreference(db.Model):
     )
 
 
+class KnowledgeDocument(db.Model):
+    """Registered study material (the RAG knowledge base)."""
+    __tablename__ = "knowledge_documents"
+
+    # Production BIGSERIAL; SQLite-compatible Integer matches the other
+    # models (User, Note, ...) so create_all autoincrements correctly.
+    id = db.Column(
+        db.Integer,
+        primary_key=True
+    )
+
+    subject_code = db.Column(
+        db.String(50),
+        nullable=False,
+        index=True
+    )
+
+    subject_name = db.Column(
+        db.String(200),
+        nullable=False
+    )
+
+    module_number = db.Column(
+        db.Integer,
+        nullable=False,
+    )
+
+    module_title = db.Column(
+        db.String(200),
+        nullable=True
+    )
+
+    title = db.Column(
+        db.String(300),
+        nullable=False
+    )
+
+    original_filename = db.Column(
+        db.String(500),
+        nullable=False
+    )
+
+    file_path = db.Column(
+        db.Text,
+        nullable=False
+    )
+
+    source = db.Column(
+        db.String(500),
+        nullable=True
+    )
+
+    page_count = db.Column(
+        db.Integer,
+        nullable=True,
+        default=0
+    )
+
+    status = db.Column(
+        db.String(30),
+        nullable=False,
+        default="uploaded"
+    )
+
+    created_at = db.Column(
+        db.DateTime(timezone=True),
+        nullable=False,
+        server_default=db.func.now()
+    )
+
+    updated_at = db.Column(
+        db.DateTime(timezone=True),
+        nullable=False,
+        server_default=db.func.now()
+    )
+
+    chunks = db.relationship(
+        "KnowledgeChunk",
+        backref="document",
+        cascade="all, delete-orphan"
+    )
+
+
+class KnowledgeChunk(db.Model):
+    """Extracted text chunk from a study document, used for RAG."""
+    __tablename__ = "knowledge_chunks"
+
+    id = db.Column(
+        db.Integer,
+        primary_key=True
+    )
+
+    document_id = db.Column(
+        db.BigInteger,
+        db.ForeignKey("knowledge_documents.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True
+    )
+
+    subject_code = db.Column(
+        db.String(50),
+        nullable=False
+    )
+
+    module_number = db.Column(
+        db.Integer,
+        nullable=False
+    )
+
+    page_number = db.Column(
+        db.Integer,
+        nullable=True
+    )
+
+    chunk_number = db.Column(
+        db.Integer,
+        nullable=False
+    )
+
+    content = db.Column(
+        db.Text,
+        nullable=False
+    )
+
+    character_count = db.Column(
+        db.Integer,
+        nullable=False,
+        default=0
+    )
+
+    word_count = db.Column(
+        db.Integer,
+        nullable=False,
+        default=0
+    )
+
+    created_at = db.Column(
+        db.DateTime(timezone=True),
+        nullable=False,
+        server_default=db.func.now()
+    )
+
+
+class KnowledgeProcessingLog(db.Model):
+    """Audit log for PDF/study-material processing steps."""
+    __tablename__ = "knowledge_processing_logs"
+
+    id = db.Column(
+        db.Integer,
+        primary_key=True
+    )
+
+    document_id = db.Column(
+        db.BigInteger,
+        db.ForeignKey("knowledge_documents.id", ondelete="CASCADE"),
+        nullable=True
+    )
+
+    action = db.Column(
+        db.String(100),
+        nullable=False
+    )
+
+    status = db.Column(
+        db.String(30),
+        nullable=False
+    )
+
+    message = db.Column(
+        db.Text,
+        nullable=True
+    )
+
+    created_at = db.Column(
+        db.DateTime(timezone=True),
+        nullable=False,
+        server_default=db.func.now()
+    )
+
+
 # =========================================================
 # DATABASE INITIALIZATION
 # =========================================================
