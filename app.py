@@ -100,22 +100,27 @@ def provider_diagnostics():
         if provider == "openai":
             report["model"] = _openai.configured_model()
             report["ready"] = bool(
-                report["key_present"] and report["sdk_ok"])
+                report["key_present"] and report["sdk_ok"]
+            )
         elif provider == "gemini":
-            from utils.rag_ai import gemini_available, _gemini_key
+            from utils.rag_ai import _gemini_key, _model_candidates
 
             key = _gemini_key() or ""
             report["key_present"] = bool(key)
-            import re as _re
-            report["key_format_ok"] = bool(
-                _re.fullmatch(r"AIza[0-9A-Za-z_-]{30,}", key))
+            report["key_format_ok"] = True
+
+            candidates = _model_candidates()
+            report["model"] = candidates[0] if candidates else None
+
             try:
                 import google.generativeai  # noqa: F401
                 report["sdk_ok"] = True
             except Exception:
                 report["sdk_ok"] = False
+
             report["ready"] = bool(
-                report["key_present"] and report["sdk_ok"])
+                report["key_present"] and report["sdk_ok"]
+            )
         elif provider == "ollama":
             from utils import ollama_provider as _ollama
 
@@ -873,6 +878,11 @@ def api_chat():
             subject_code=rag_subject,
             module_number=rag_module,
             mode=mode,
+            history=data.get("history"),
+            recent_topics=data.get("recent_topics"),
+            recent_suggestions=data.get("recent_suggestions")
+            or data.get("displayed_suggestions"),
+            semester=user.get("current_semester"),
         )
 
         answer = rag_result.get("answer", "")
@@ -901,6 +911,7 @@ def api_chat():
                 "mode": rag_result.get("mode", mode),
                 "latency_ms": rag_result.get("latency_ms", 0),
                 "cached": rag_result.get("cached", False),
+                "suggestions": rag_result.get("suggestions") or [],
             }
 
     except Exception as rag_error:
@@ -992,7 +1003,14 @@ def api_chat():
         )
         engine = "offline"
 
-    return {"reply": reply, "answer": reply, "sources": [], "used_rag": False, "used_ai": False, "engine": engine}
+    from utils.rag_ai import generate_followup_suggestions
+    return {"reply": reply, "answer": reply, "sources": [], "used_rag": False, "used_ai": False, "engine": engine, "suggestions": generate_followup_suggestions(
+        message, reply, data.get("recent_topics"),
+        recent_suggestions=data.get("recent_suggestions")
+        or data.get("displayed_suggestions"),
+        subject_code=rag_subject,
+        semester=user.get("current_semester"),
+    )}
 
 
 # =========================================================
@@ -1067,6 +1085,11 @@ def api_chat_stream():
                 subject_code=rag_subject,
                 module_number=rag_module,
                 mode=mode,
+                history=data.get("history"),
+                recent_topics=data.get("recent_topics"),
+                recent_suggestions=data.get("recent_suggestions")
+                or data.get("displayed_suggestions"),
+                semester=user.get("current_semester"),
             ):
                 yield f"event: {item['event']}\ndata: {_json.dumps(item['data'])}\n\n"
         except GeneratorExit:

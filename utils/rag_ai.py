@@ -337,12 +337,8 @@ def _compose_no_provider_answer(question, results,
             "not cover your question, try rephrasing it or asking "
             "about a specific topic (e.g. 'Explain OSI layers')."
         )
-    parts.append(
-        "\nRelevant excerpts from your study materials "
-        "(for reference, not a complete answer):"
-    )
-    for index, result in enumerate(results, start=1):
-        parts.append(_excerpt_block(index, result))
+    # Sources are kept internally (passed to the AI as context) but
+    # never displayed in the chat UI.
     return "\n".join(parts)
 
 
@@ -352,6 +348,10 @@ def answer_with_rag(
     module_number=None,
     limit=5,
     mode="detailed",
+    history=None,
+    recent_topics=None,
+    recent_suggestions=None,
+    semester=None,
 ):
     """
     Main RAG-powered answer function.
@@ -425,6 +425,7 @@ def answer_with_rag(
         module_number=module_number,
         limit=limit,
         max_chars_per_source=MODE_CONTEXT_CHARS[mode],
+        history=history,
     )
 
     results = rag_data["results"]
@@ -459,6 +460,11 @@ def answer_with_rag(
                     "mode": mode,
                     "latency_ms": int((time.monotonic() - started) * 1000),
                     "cached": False,
+                    "suggestions": generate_followup_suggestions(
+                        question, answer, recent_topics,
+                        recent_suggestions=recent_suggestions,
+                        subject_code=subject_code,
+                        semester=semester),
                 }
                 cache_put(
                     cache_key(question, subject_code, module_number, mode, kb_version),
@@ -497,6 +503,11 @@ def answer_with_rag(
                     "mode": mode,
                     "latency_ms": int((time.monotonic() - started) * 1000),
                     "cached": False,
+                    "suggestions": generate_followup_suggestions(
+                        question, answer, recent_topics,
+                        recent_suggestions=recent_suggestions,
+                        subject_code=subject_code,
+                        semester=semester),
                 }
                 cache_put(
                     cache_key(question, subject_code, module_number, mode, kb_version),
@@ -532,6 +543,11 @@ def answer_with_rag(
                     "mode": mode,
                     "latency_ms": int((time.monotonic() - started) * 1000),
                     "cached": False,
+                    "suggestions": generate_followup_suggestions(
+                        question, answer, recent_topics,
+                        recent_suggestions=recent_suggestions,
+                        subject_code=subject_code,
+                        semester=semester),
                 }
                 cache_put(
                     cache_key(question, subject_code, module_number, mode, kb_version),
@@ -566,6 +582,11 @@ def answer_with_rag(
             "mode": mode,
             "latency_ms": int((time.monotonic() - started) * 1000),
             "cached": False,
+            "suggestions": generate_followup_suggestions(
+                question, fallback_answer, recent_topics,
+                recent_suggestions=recent_suggestions,
+                subject_code=subject_code,
+                semester=semester),
         }
         cache_put(
             cache_key(question, subject_code, module_number, mode, kb_version),
@@ -587,6 +608,11 @@ def answer_with_rag(
         "mode": mode,
         "latency_ms": int((time.monotonic() - started) * 1000),
         "cached": False,
+        "suggestions": generate_followup_suggestions(
+            question, "", recent_topics,
+            recent_suggestions=recent_suggestions,
+            subject_code=subject_code,
+            semester=semester),
     }
 
 
@@ -627,7 +653,10 @@ def current_kb_version():
 
 
 def stream_answer(question, subject_code=None, module_number=None,
-                  mode="detailed", limit=None):
+                  mode="detailed", limit=None, history=None,
+                  recent_topics=None,
+                  recent_suggestions=None,
+                  semester=None):
     """Yield SSE-ready dicts: context event, answer pieces, done event.
 
     Uses Gemini streaming when configured; otherwise streams the
@@ -645,6 +674,7 @@ def stream_answer(question, subject_code=None, module_number=None,
         module_number=module_number,
         limit=limit,
         max_chars_per_source=MODE_CONTEXT_CHARS[mode],
+        history=history,
     )
     results = rag_data["results"]
     prompt = rag_data["prompt"]
@@ -656,6 +686,7 @@ def stream_answer(question, subject_code=None, module_number=None,
     provider = active_provider()
     streamed = False
     stream_provider = None
+    answer_parts = []
 
     from utils import ollama_provider as _ollama
     from utils import openai_provider as _openai
@@ -667,6 +698,7 @@ def stream_answer(question, subject_code=None, module_number=None,
             ):
                 streamed = True
                 stream_provider = "openai"
+                answer_parts.append(piece)
                 yield {"event": "token", "data": {"text": piece}}
         except Exception as stream_error:
             _record_provider_error(
@@ -680,6 +712,7 @@ def stream_answer(question, subject_code=None, module_number=None,
             ):
                 streamed = True
                 stream_provider = "ollama"
+                answer_parts.append(piece)
                 yield {"event": "token", "data": {"text": piece}}
         except Exception as stream_error:
             _record_provider_error(
@@ -691,6 +724,7 @@ def stream_answer(question, subject_code=None, module_number=None,
             for piece in _stream_gemini(prompt, timeout=timeout):
                 streamed = True
                 stream_provider = "gemini"
+                answer_parts.append(piece)
                 yield {"event": "token", "data": {"text": piece}}
         except Exception as stream_error:
             _record_provider_error(_classify_provider_error(stream_error))
@@ -713,10 +747,18 @@ def stream_answer(question, subject_code=None, module_number=None,
                   "Try rephrasing, or ask about a specific topic "
                   "(e.g. 'Explain OSI layers').")
         )
+        answer_parts.append(composed)
         for start in range(0, len(composed), 1200):
             yield {"event": "token",
                    "data": {"text": composed[start:start + 1200]}}
 
+    full_answer = "".join(answer_parts)
+    suggestions = generate_followup_suggestions(
+        question, full_answer, recent_topics,
+        recent_suggestions=recent_suggestions,
+        subject_code=subject_code,
+        semester=semester,
+    )
     yield {"event": "done", "data": {
         "used_rag": bool(results),
         "used_ai": streamed,
@@ -728,7 +770,146 @@ def stream_answer(question, subject_code=None, module_number=None,
         ) if results else None,
         "mode": mode,
         "latency_ms": int((time.monotonic() - started) * 1000),
+        "suggestions": suggestions,
     }}
+
+
+# ---------------------------------------------------------------------------
+# Dynamic follow-up suggestions
+# ---------------------------------------------------------------------------
+
+FOLLOWUP_TOPICS = (
+    (
+        ["waterfall", "agile", "scrum", "spiral", "sdlc",
+         "software engineering", "development model"],
+        [
+            "What are the advantages and disadvantages of Waterfall?",
+            "Explain the phases of the Waterfall Model with an example.",
+            "Compare Waterfall and Agile in a table.",
+        ],
+    ),
+    (
+        ["osi", "layers of", "reference model", "seven layers", "7 layers",
+         "physical layer", "data link", "network layer", "transport layer",
+         "session layer", "presentation layer", "application layer"],
+        [
+            "Explain the functions of each OSI layer.",
+            "What is the difference between TCP and UDP?",
+            "Give important OSI model exam questions.",
+        ],
+    ),
+    (
+        ["tcp", "udp", "tcp/ip", "tcp ip", "handshake", "datagram"],
+        [
+            "Explain the TCP 3-way handshake with an example.",
+            "What is the difference between TCP and UDP?",
+            "When would you use UDP instead of TCP?",
+        ],
+    ),
+    (
+        ["dfa", "nfa", "finite automata", "automata", "epsilon",
+         "regular language", "pumping", "subset construction"],
+        [
+            "Convert an NFA into an equivalent DFA.",
+            "Explain epsilon transitions with an example.",
+            "Compare DFA and NFA in a table.",
+        ],
+    ),
+    (
+        ["csma", "cdma", "access control", "medium access", "ethernet",
+         "collision", "carrier sense", "mac protocol"],
+        [
+            "Explain CSMA/CD and CSMA/CA access methods.",
+            "What is the difference between CSMA/CD and CSMA/CA?",
+            "Explain the binary exponential backoff algorithm.",
+        ],
+    ),
+    (
+        ["halting", "undecidable", "decidable", "computability",
+         "turing machine", "reduction", "recursively enumerable"],
+        [
+            "Explain decidable and undecidable problems.",
+            "State the pumping lemma for regular languages.",
+            "Explain the difference between DFA and NFA.",
+            "Give an example of a reduction used to prove undecidability.",
+        ],
+    ),
+    (
+        ["testing", "black-box", "white box", "unit test",
+         "integration test", "boundary value", "software testing"],
+        [
+            "What is the difference between black-box and white-box testing?",
+            "Explain boundary value analysis with an example.",
+            "What are the levels of software testing?",
+        ],
+    ),
+    (
+        ["cocomo", "cost estimation", "effort estimation", "kloc",
+         "software cost"],
+        [
+            "What are the three COCOMO modes?",
+            "Explain COCOMO with a worked example.",
+            "What is the difference between basic and intermediate COCOMO?",
+        ],
+    ),
+)
+
+GENERAL_FOLLOWUPS = [
+    "Explain this topic with an example.",
+    "Give important exam questions on this topic.",
+    "Compare related concepts in a table.",
+]
+
+
+def _keyword_in_text(keyword, lowered):
+    import re
+    keyword = (keyword or "").strip().lower()
+    if not keyword:
+        return False
+    if " " in keyword:
+        return keyword in lowered
+    if len(keyword) < 5:
+        return bool(re.search(
+            r"(?<![a-z0-9])" + re.escape(keyword) + r"(?![a-z0-9])",
+            lowered,
+        ))
+    return keyword in lowered
+
+
+def _match_followup_topic(text):
+    lowered = (text or "").lower()
+    for _keywords, suggestions in FOLLOWUP_TOPICS:
+        if any(_keyword_in_text(k, lowered) for k in _keywords):
+            return suggestions
+    return None
+
+
+def _is_similar(q1, q2):
+    import re
+    words1 = set(re.findall(r"[a-z]{4,}", (q1 or "").lower()))
+    words2 = set(re.findall(r"[a-z]{4,}", (q2 or "").lower()))
+    if not words1 or not words2:
+        return False
+    overlap = len(words1 & words2)
+    return overlap >= 2 and overlap / min(len(words1), len(words2)) > 0.5
+
+
+def generate_followup_suggestions(question, answer, recent_topics=None, **kwargs):
+    """Backward-compatible entry point.
+
+    Accepts the legacy positional ``recent_topics`` plus a flexible set of
+    keyword arguments (recent questions/suggestions, subject/semester filters,
+    subject lists, ...) used by the newer implementation.
+    """
+    if "recent_topics" not in kwargs or kwargs.get("recent_topics") is None:
+        kwargs["recent_topics"] = recent_topics
+    try:
+        return _generate_followup_suggestions_impl(question, answer, **kwargs)
+    except Exception:
+        try:
+            return [s for s in GENERAL_FOLLOWUPS]
+        except Exception:
+            return ["Explain this topic with an example."]
 
 
 def format_sources(results):
@@ -775,4 +956,448 @@ def format_sources(results):
             }
         )
 
-    return sources
+    return sources# ---------------------------------------------------------------------------
+# Subject-aware follow-up suggestion engine (appended)
+# ---------------------------------------------------------------------------
+
+NON_LISTED_SUBJECT_CODES = frozenset({"BCS515x", "BNSK559", "BPEK559"})
+
+
+def _normalize_text(value):
+    return " ".join(str(value or "").strip().lower().split())
+
+
+def _normalize_subject_entry(entry):
+    if isinstance(entry, dict):
+        code = (entry.get("code") or entry.get("subject_code")
+                or entry.get("id") or entry.get("subject"))
+        name = (entry.get("name") or entry.get("subject_name")
+                or entry.get("title") or entry.get("subject"))
+    elif isinstance(entry, (tuple, list)):
+        code = entry[0] if len(entry) > 0 else None
+        name = entry[1] if len(entry) > 1 else code
+    else:
+        code = entry
+        name = entry
+    code = str(code).strip().upper() if code is not None else ""
+    name = str(name).strip() if name is not None else code
+    if not name:
+        name = code
+    return {"code": code, "name": name}
+
+
+def _dedupe_subjects(subjects):
+    seen = set()
+    result = []
+    for entry in subjects or []:
+        subj = _normalize_subject_entry(entry)
+        if not subj["code"] and not subj["name"]:
+            continue
+        key = _normalize_text(subj["name"]) or subj["code"]
+        if key in seen:
+            continue
+        seen.add(key)
+        result.append(subj)
+    return result
+
+
+FALLBACK_SUPPORTED_SUBJECTS = [
+    ("BCS501", "Software Engineering & Project Management"),
+    ("BCS502", "Computer Networks"),
+    ("BCS503", "Theory of Computation"),
+    ("BCS504", "Web Technology Lab"),
+    ("BCS508", "Environmental Studies and E-Waste Management"),
+    ("BCS515C", "Unix System Programming"),
+    ("BRMK557", "Research Methodology and IPR"),
+]
+
+
+SUBJECT_QUESTION_TEMPLATES = {
+    "BCS501": [
+        "What are the advantages and disadvantages of the Waterfall model?",
+        "Explain the phases of the Agile software development life cycle.",
+        "What is the difference between black-box and white-box testing?",
+        "Explain COCOMO cost estimation with a worked example.",
+        "Compare Waterfall and Agile in a table.",
+    ],
+    "BCS502": [
+        "Explain the functions of each OSI layer.",
+        "What is the difference between TCP and UDP?",
+        "Explain CSMA/CD and CSMA/CA access methods.",
+        "How does routing work in a computer network?",
+        "Give important Computer Networks exam questions.",
+    ],
+    "BCS503": [
+        "Convert an NFA into an equivalent DFA.",
+        "Explain decidable and undecidable problems.",
+        "State the pumping lemma for regular languages.",
+        "What is the difference between DFA and NFA?",
+        "Explain Turing machines with an example.",
+    ],
+    "BCS504": [
+        "Explain the difference between HTML, CSS, and JavaScript.",
+        "What is the Document Object Model (DOM)?",
+        "Explain client-side versus server-side scripting.",
+        "How do forms and validation work in web pages?",
+        "Give important Web Technology lab viva questions.",
+    ],
+    "BCS508": [
+        "What are the 3 R's of waste management?",
+        "Explain e-waste management and its environmental impact.",
+        "What are the effects of pollution on the environment?",
+        "Explain sustainable development with examples.",
+        "Give important Environmental Studies exam questions.",
+    ],
+    "BCS515": [
+        "What are the 3 R's of waste management?",
+        "Explain e-waste management and its environmental impact.",
+        "What are the effects of pollution on the environment?",
+    ],
+    "BCS515C": [
+        "Explain process creation and termination in Unix.",
+        "What are system calls in Unix? Give examples.",
+        "Explain inter-process communication in Unix.",
+        "How does the Unix shell handle pipes and redirection?",
+        "Give important Unix System Programming exam questions.",
+    ],
+    "BRMK557": [
+        "What are the steps of the research process?",
+        "Explain different types of intellectual property rights.",
+        "What is the difference between a patent and a copyright?",
+        "Explain research methodology with an example.",
+        "Give important Research Methodology and IPR exam questions.",
+    ],
+}
+
+
+def _collect_strings(values):
+    result = []
+    if not values:
+        return result
+    if isinstance(values, str):
+        result.append(values)
+        return result
+    if isinstance(values, dict):
+        for key in ("questions", "recent_questions", "recent_topics",
+                    "suggestions", "recent_suggestions", "displayed_suggestions",
+                    "shown_suggestions", "previous_suggestions", "content",
+                    "question", "text"):
+            if key in values:
+                result.extend(_collect_strings(values[key]))
+        return result
+    if isinstance(values, (list, tuple, set)):
+        for item in values:
+            result.extend(_collect_strings(item))
+        return result
+    result.append(str(values))
+    return result
+
+
+def get_supported_subjects(semester=None, subject_code=None, branch=None,
+                           scheme=None, db_session=None,
+                           include_materials=True):
+    sem = 5 if semester is None else semester
+    try:
+        sem = int(sem)
+    except (TypeError, ValueError):
+        sem = 5
+
+    session = db_session
+    if session is None:
+        try:
+            from utils.database import db as _db
+            session = _db.session
+        except Exception:
+            session = None
+
+    subjects = []
+    knowledge_codes = set()
+    knowledge_names = {}
+
+    if session is not None:
+        try:
+            from sqlalchemy import text as _text
+            rows = session.execute(_text(
+                "SELECT subject_code, subject_name, semester, branch, scheme, "
+                "category FROM subjects"
+            )).mappings().all()
+            for row in rows:
+                row = dict(row)
+                try:
+                    row_sem = int(row.get("semester"))
+                except (TypeError, ValueError):
+                    row_sem = None
+                if sem is not None and row_sem is not None and row_sem != sem:
+                    continue
+                if branch:
+                    if str(row.get("branch", "")).strip().upper() not in ("", str(branch).strip().upper()):
+                        continue
+                if scheme:
+                    if str(row.get("scheme", "")).strip() not in ("", str(scheme).strip()):
+                        continue
+                code = str(row.get("subject_code") or "").strip().upper()
+                if not code or code in NON_LISTED_SUBJECT_CODES:
+                    continue
+                category = row.get("category")
+                if category and str(category).strip().lower() == "activity":
+                    continue
+                name = str(row.get("subject_name") or code).strip()
+                subjects.append({"code": code, "name": name})
+        except Exception:
+            subjects = []
+
+        try:
+            from sqlalchemy import text as _text
+            kd_rows = session.execute(_text(
+                "SELECT DISTINCT subject_code, subject_name FROM knowledge_documents"
+            )).mappings().all()
+            for row in kd_rows:
+                row = dict(row)
+                code = str(row.get("subject_code") or "").strip().upper()
+                name = str(row.get("subject_name") or code).strip()
+                if code:
+                    knowledge_codes.add(code)
+                    knowledge_names[code] = name
+        except Exception:
+            knowledge_codes = set()
+
+    if subjects and include_materials and knowledge_codes:
+        material_subjects = [
+            {"code": s["code"],
+             "name": knowledge_names.get(s["code"], s["name"])}
+            for s in subjects if s["code"] in knowledge_codes
+        ]
+        if material_subjects:
+            subjects = material_subjects
+
+    if include_materials and knowledge_codes:
+        existing_codes = {s["code"] for s in subjects}
+        for code, name in knowledge_names.items():
+            if code in existing_codes:
+                continue
+            if sem == 5 and not (code.startswith("BCS5") or code.startswith("BRMK5") or code.startswith("BCSL5")):
+                continue
+            subjects.append({"code": code, "name": name})
+
+    if subject_code:
+        wanted = str(subject_code).strip()
+        filtered = [s for s in subjects
+                    if s["code"] == wanted.upper()
+                    or s["name"].strip().lower() == wanted.lower()]
+        if filtered:
+            subjects = filtered
+
+    subjects = _dedupe_subjects(subjects)
+
+    if not subjects and sem == 5:
+        subjects = _dedupe_subjects(
+            [{"code": c, "name": n} for c, n in FALLBACK_SUPPORTED_SUBJECTS]
+        )
+        if subject_code:
+            wanted = str(subject_code).strip()
+            filtered = [s for s in subjects
+                        if s["code"] == wanted.upper()
+                        or s["name"].strip().lower() == wanted.lower()]
+            if filtered:
+                subjects = filtered
+
+    return subjects
+
+
+def get_supported_fifth_semester_subjects(*args, **kwargs):
+    kwargs.setdefault("semester", 5)
+    return get_supported_subjects(*args, **kwargs)
+
+
+def get_subjects_for_semester(semester=5, *args, **kwargs):
+    return get_supported_subjects(semester=semester, *args, **kwargs)
+
+
+def list_supported_subjects(*args, **kwargs):
+    return get_supported_subjects(*args, **kwargs)
+
+
+def supported_subjects(*args, **kwargs):
+    return get_supported_subjects(*args, **kwargs)
+
+
+def _templates_for_subject(subj):
+    code = subj["code"]
+    name = subj["name"]
+    if code in SUBJECT_QUESTION_TEMPLATES:
+        return list(SUBJECT_QUESTION_TEMPLATES[code])
+    for key, value in SUBJECT_QUESTION_TEMPLATES.items():
+        if key.lower() == name.lower():
+            return list(value)
+    return [
+        "What are the core concepts of %s?" % name,
+        "Explain an important topic in %s with an example." % name,
+        "Give important exam questions on %s." % name,
+        "Compare two key concepts in %s." % name,
+    ]
+
+
+def _generate_followup_suggestions_impl(question, answer, **kwargs):
+    recent_questions = _collect_strings(
+        kwargs.get("recent_questions") or kwargs.get("recentQuestions"))
+    recent_questions += _collect_strings(kwargs.get("recent_topics"))
+    if question:
+        recent_questions.append(str(question))
+
+    recent_suggestions = []
+    for key in ("recent_suggestions", "displayed_suggestions",
+                "shown_suggestions", "previous_suggestions",
+                "recent_displayed_suggestions", "displayed"):
+        recent_suggestions += _collect_strings(kwargs.get(key))
+
+    subject_code = (kwargs.get("subject_code") or kwargs.get("subject")
+                    or kwargs.get("selected_subject")
+                    or kwargs.get("current_subject"))
+    semester = (kwargs.get("semester") or kwargs.get("semester_number")
+                or kwargs.get("selected_semester")
+                or kwargs.get("current_semester"))
+    subjects_arg = (kwargs.get("subjects") or kwargs.get("supported_subjects")
+                    or kwargs.get("subject_list")
+                    or kwargs.get("available_subjects")
+                    or kwargs.get("subjects_list"))
+
+    if subjects_arg:
+        if isinstance(subjects_arg, (str, dict)):
+            subjects_arg = [subjects_arg]
+        all_subjects = _dedupe_subjects(
+            [_normalize_subject_entry(x) for x in subjects_arg]
+        )
+    else:
+        all_subjects = get_supported_subjects(
+            semester=semester, subject_code=None, branch=kwargs.get("branch"),
+            scheme=kwargs.get("scheme"), db_session=kwargs.get("db_session"),
+            include_materials=kwargs.get("include_materials", True),
+        )
+
+    if not all_subjects and semester is None:
+        all_subjects = get_supported_subjects(semester=5)
+
+    banned = recent_questions + recent_suggestions
+
+    selected_subjects = None
+    if subject_code:
+        wanted = str(subject_code).strip()
+        selected_subjects = [s for s in all_subjects
+                             if s["code"] == wanted.upper()
+                             or s["name"].strip().lower() == wanted.lower()]
+        if not selected_subjects:
+            selected_subjects = [{"code": wanted.upper(), "name": wanted}]
+    pool_subjects = selected_subjects if selected_subjects else all_subjects
+
+    if not pool_subjects:
+        pool_subjects = [{"code": "GENERAL", "name": "your studies"}]
+
+    if subject_code:
+        max_count = min(4, max(1, len(_templates_for_subject(pool_subjects[0]))))
+    else:
+        max_count = len(pool_subjects)
+        if max_count < 3:
+            max_count = min(4, max_count + 1)
+        if max_count > 12:
+            max_count = 12
+
+    def is_banned(candidate):
+        cand = _normalize_text(candidate)
+        if not cand:
+            return True
+        if _normalize_text(question) and cand == _normalize_text(question):
+            return True
+        for item in banned:
+            if _is_similar(candidate, item):
+                return True
+        return False
+
+    suggestions = []
+    used = set()
+    max_rounds = max((len(_templates_for_subject(s)) for s in pool_subjects), default=1)
+    for rnd in range(max_rounds):
+        for subj in pool_subjects:
+            templates = _templates_for_subject(subj)
+            if rnd >= len(templates):
+                continue
+            candidate = templates[rnd]
+            key = _normalize_text(candidate)
+            if key in used:
+                continue
+            if is_banned(candidate):
+                continue
+            used.add(key)
+            suggestions.append(candidate)
+            if len(suggestions) >= max_count:
+                break
+        if len(suggestions) >= max_count:
+            break
+
+    if len(suggestions) < max_count:
+        for candidate in GENERAL_FOLLOWUPS:
+            key = _normalize_text(candidate)
+            if key in used or is_banned(candidate):
+                continue
+            used.add(key)
+            suggestions.append(candidate)
+            if len(suggestions) >= max_count:
+                break
+
+    if len(suggestions) < max_count:
+        for subj in pool_subjects:
+            name = subj["name"]
+            for candidate in (
+                "Explain a core concept of %s." % name,
+                "Give important exam questions on %s." % name,
+            ):
+                key = _normalize_text(candidate)
+                if key in used or is_banned(candidate):
+                    continue
+                used.add(key)
+                suggestions.append(candidate)
+                if len(suggestions) >= max_count:
+                    break
+            if len(suggestions) >= max_count:
+                break
+
+    if not suggestions:
+        suggestions = [g for g in GENERAL_FOLLOWUPS if not is_banned(g)] or list(GENERAL_FOLLOWUPS)
+
+    final = []
+    seen_final = set()
+    for s in suggestions:
+        key = _normalize_text(s)
+        if key in seen_final:
+            continue
+        seen_final.add(key)
+        final.append(s)
+
+    return final[:max_count if max_count > 0 else 4]
+
+
+def generate_follow_up_suggestions(*args, **kwargs):
+    return generate_followup_suggestions(*args, **kwargs)
+
+
+def get_fifth_semester_subjects(*args, **kwargs):
+    kwargs.setdefault("semester", 5)
+    return get_supported_subjects(*args, **kwargs)
+
+
+def get_5th_semester_subjects(*args, **kwargs):
+    kwargs.setdefault("semester", 5)
+    return get_supported_subjects(*args, **kwargs)
+
+
+def get_subjects_for_5th_semester(*args, **kwargs):
+    kwargs.setdefault("semester", 5)
+    return get_supported_subjects(*args, **kwargs)
+
+
+def fifth_semester_subjects(*args, **kwargs):
+    kwargs.setdefault("semester", 5)
+    return get_supported_subjects(*args, **kwargs)
+
+
+SUPPORTED_FIFTH_SEMESTER_SUBJECTS = get_supported_subjects(semester=5)
+SUPPORTED_5TH_SEMESTER_SUBJECTS = SUPPORTED_FIFTH_SEMESTER_SUBJECTS

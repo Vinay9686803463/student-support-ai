@@ -26,9 +26,40 @@
 
 /* Keep existing overrides minimal */
 
-/* Ensure citations don't interfere with message layout */
+/* Dynamic follow-up suggestions */
+.followup-suggestions {
+    margin: 10px 0 15px 0;
+    padding: 8px 12px;
+    background: var(--card, #f8f9fa);
+    border-radius: 8px;
+}
 
-.chat-messages .message:last-child .source-citations {
-    margin-top: 0.75rem;
-    border-top-color: #e0e0e0;
+.followup-label {
+    font-size: 0.85rem;
+    font-weight: 600;
+    color: var(--muted, #666);
+    margin: 0 0 6px 0;
+}
+
+.followup-suggestions .suggestions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+}
+
+.followup-suggestions .suggestion-chip {
+    padding: 6px 12px;
+    border: 1px solid var(--border, #ddd);
+    border-radius: 16px;
+    background: var(--bg, #fff);
+    color: var(--text, #333);
+    font-size: 0.85rem;
+    cursor: pointer;
+    transition: background 0.15s, border-color 0.15s;
+}
+
+.followup-suggestions .suggestion-chip:hover {
+    background: var(--primary, #007bff);
+    color: #fff;
+    border-color: var(--primary, #007bff);
 }

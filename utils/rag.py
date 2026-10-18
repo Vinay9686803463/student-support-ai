@@ -124,6 +124,7 @@ def build_rag_prompt(
     question,
     results,
     max_chars_per_source=None,
+    history=None,
 ):
     """
     Build the prompt that will eventually be sent
@@ -139,6 +140,20 @@ def build_rag_prompt(
             "in the knowledge base."
         )
 
+    history_block = ""
+    if history and isinstance(history, list):
+        lines = []
+        for msg in history[-6:]:
+            role = (msg.get("role") or "").strip().lower() if isinstance(msg, dict) else ""
+            content = (msg.get("content") or "").strip() if isinstance(msg, dict) else str(msg)
+            if role in ("user", "assistant") and content:
+                label = "Student" if role == "user" else "Assistant"
+                if len(content) > 500:
+                    content = content[:500] + "..."
+                lines.append(f"{label}: {content}")
+        if lines:
+            history_block = "CONVERSATION HISTORY:\\n" + "\\n".join(lines) + "\\n\\n"
+
     prompt = f"""
 You are a helpful university study assistant. Answer the student's actual question directly and accurately. Use the retrieved study materials as supporting context, not as a replacement for an answer. Explain concepts in clear, natural language. For problem-solving questions, show the method and steps. For algorithms, include pseudocode and complexity when relevant. For numerical problems, show calculations and the final result. For comparison questions, explain the differences clearly. Structure longer answers with headings and examples. Cite only sources actually used. If the sources are insufficient, state what is missing and provide a clearly labeled general explanation when appropriate. Never return only filenames, citations, search results, or raw document excerpts unless the student explicitly requests them.
 
@@ -150,7 +165,7 @@ Additional rules:
 5. Do not mention internal retrieval, embeddings, pgvector, or RAG to the student.
 6. When you rely on a retrieved passage, cite it as [Source N] where N matches the SOURCE number below.
 
-STUDENT QUESTION:
+{history_block}STUDENT QUESTION:
 {question}
 
 RETRIEVED VTU KNOWLEDGE:
@@ -203,6 +218,7 @@ def prepare_rag_request(
     module_number=None,
     limit=5,
     max_chars_per_source=None,
+    history=None,
 ):
     """
     Retrieve relevant knowledge and prepare the
@@ -225,6 +241,7 @@ def prepare_rag_request(
         question=question,
         results=results,
         max_chars_per_source=max_chars_per_source,
+        history=history,
     )
 
     return {

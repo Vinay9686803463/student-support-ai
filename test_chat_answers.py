@@ -98,10 +98,11 @@ class AnswerPipelineTest(unittest.TestCase):
         self.assertTrue(out["used_rag"])
         self.assertIn("Direct AI answering is currently unavailable",
                       out["answer"])
-        self.assertIn("Relevant excerpts", out["answer"])
-        # Excerpts labeled, sources intact for the citations UI.
-        self.assertIn("BCS304", out["answer"])
+        # Sources are kept internally but not displayed in the answer.
         self.assertEqual(len(out["sources"]), 2)
+        # The answer should not contain raw excerpts or source labels.
+        self.assertNotIn("Relevant excerpts", out["answer"])
+        self.assertNotIn("BCS304 Module", out["answer"])
         # Must not be a bare dump.
         self.assertFalse(out["answer"].startswith("Binary search works"))
 
@@ -148,7 +149,7 @@ class AnswerPipelineTest(unittest.TestCase):
         body = "".join(e["data"]["text"] for e in events
                        if e["event"] == "token")
         self.assertIn("Direct AI answering is currently unavailable", body)
-        self.assertIn("Relevant excerpts", body)
+        self.assertNotIn("Relevant excerpts", body)
         done = events[-1]["data"]
         self.assertTrue(done["used_rag"])
         self.assertFalse(done["used_ai"])
