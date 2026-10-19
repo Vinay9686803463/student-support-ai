@@ -658,3 +658,189 @@
         max-width: 150px;
     }
 }
+/* ============================================================
+   ASSISTANT ANSWER TYPOGRAPHY — ChatGPT-style rendering
+   The renderer (chat.js) emits semantic HTML; these rules give
+   headings, lists, tables, code, quotes, rules and math their
+   spacing. Scoped to assistant bubbles so user messages and the
+   rest of the theme are untouched.
+   ============================================================ */
+
+/* Inline emphasis must stay inline: the legacy core rule turned every
+   <strong> into a block "heading" (display:block + margins), which
+   chopped bold words out of mid-paragraph flow. */
+.ai-message .message-content strong {
+    display: inline;
+    margin: 0;
+    font-size: inherit;
+    color: inherit;
+    font-weight: 700;
+}
+
+.ai-message .message-content p {
+    margin: 0 0 10px;
+    font-size: 13.5px;
+    line-height: 1.65;
+}
+
+.ai-message .message-content > p:last-child {
+    margin-bottom: 0;
+}
+
+/* Headings: compact hierarchy that reads inside a bubble. */
+.ai-message .message-content h1,
+.ai-message .message-content h2,
+.ai-message .message-content h3,
+.ai-message .message-content h4,
+.ai-message .message-content h5,
+.ai-message .message-content h6 {
+    margin: 14px 0 8px;
+    color: #e8eeff;
+    line-height: 1.35;
+}
+
+.ai-message .message-content h1 { font-size: 18px; }
+.ai-message .message-content h2 { font-size: 16px; }
+.ai-message .message-content h3 { font-size: 14.5px; }
+.ai-message .message-content h4 { font-size: 13.5px; }
+.ai-message .message-content > h1:first-child,
+.ai-message .message-content > h2:first-child,
+.ai-message .message-content > h3:first-child {
+    margin-top: 2px;
+}
+
+/* Lists and numbered steps. */
+.ai-message .message-content ul,
+.ai-message .message-content ol {
+    margin: 6px 0 10px;
+    padding-left: 22px;
+}
+
+.ai-message .message-content li {
+    margin: 4px 0;
+    line-height: 1.6;
+}
+
+.ai-message .message-content li::marker {
+    color: #93c5fd;
+}
+
+/* Nested lists inside an item keep tight vertical rhythm. */
+.ai-message .message-content li > ul,
+.ai-message .message-content li > ol {
+    margin: 4px 0 2px;
+}
+
+/* Fenced code blocks — dark, padded, horizontally scrollable. */
+.ai-message .message-content pre {
+    margin: 10px 0;
+    padding: 12px 14px;
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 10px;
+    background: #000000;
+    overflow-x: auto;
+}
+
+.ai-message .message-content pre,
+.ai-message .message-content code {
+    font-family: "Consolas", "SFMono-Regular", ui-monospace, Menlo,
+        monospace;
+    font-size: 12.5px;
+    line-height: 1.55;
+}
+
+/* Inline code reads as a small chip; code-block text stays plain. */
+.ai-message .message-content :not(pre) > code {
+    background: rgba(59, 130, 246, 0.12);
+    border: 1px solid rgba(59, 130, 246, 0.18);
+    border-radius: 5px;
+    padding: 1px 5px;
+    color: #93c5fd;
+}
+
+/* Tables: full-width, aligned cells, horizontally scrollable on small
+   screens instead of overflowing the bubble. */
+.table-wrap {
+    margin: 10px 0;
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 10px;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+}
+
+.table-wrap table {
+    width: 100%;
+    min-width: 420px;
+    border-collapse: collapse;
+}
+
+.table-wrap th,
+.table-wrap td {
+    padding: 8px 12px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+    text-align: left;
+    font-size: 12.5px;
+    line-height: 1.5;
+    color: rgba(255, 255, 255, 0.85);
+    vertical-align: top;
+}
+
+.table-wrap th {
+    background: rgba(59, 130, 246, 0.10);
+    color: #93c5fd;
+    font-weight: 600;
+    white-space: nowrap;
+}
+
+.table-wrap tr:last-child td {
+    border-bottom: 0;
+}
+
+/* Blockquotes and separators. */
+.ai-message .message-content blockquote {
+    margin: 10px 0;
+    padding: 6px 12px;
+    border-left: 3px solid var(--primary, #3b82f6);
+    border-radius: 0 8px 8px 0;
+    background: rgba(59, 130, 246, 0.06);
+}
+
+.ai-message .message-content hr {
+    border: 0;
+    border-top: 1px solid rgba(255, 255, 255, 0.10);
+    margin: 12px 0;
+}
+
+/* Math (LaTeX-lite): formulas flow like text; display math centers;
+   fractions stack; sub/superscripts keep readable ratios. Symbols
+   are plain Unicode — nothing executes from math content. */
+.message-content div.math-display {
+    display: block;
+    margin: 10px 0;
+    padding: 2px 8px;
+    font-size: 15px;
+    text-align: center;
+}
+
+.message-content .math-frac {
+    display: inline-flex;
+    flex-direction: column;
+    align-items: center;
+    vertical-align: -0.45em;
+    margin: 0 3px;
+    line-height: 1.25;
+}
+
+.message-content .math-frac span {
+    display: block;
+    padding: 0 4px;
+}
+
+.message-content .math-frac-top {
+    border-bottom: 1px solid rgba(255, 255, 255, 0.55);
+}
+
+.message-content sup,
+.message-content sub {
+    font-size: 0.78em;
+}

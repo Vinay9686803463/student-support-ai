@@ -307,6 +307,9 @@ function decodeSafeEntities(text) {
         .replace(/\$\$[^$\n]+\$\$/g, function (match) {
             return _stashValue(store, match);
         })
+        .replace(/\\\([\s\S]*?\\\)/g, function (match) {
+            return _stashValue(store, match);
+        })
         .replace(/\$[^$\n]+\$/g, function (match) {
             return _stashValue(store, match);
         });
@@ -370,6 +373,104 @@ function _normalizeEmphasisSpacing(text) {
     return out;
 }
 
+/* ============================================================
+   LaTeX-lite math renderer
+   ============================================================ */
+
+var _MATH_SYMBOLS = {
+    rightarrow: "→", to: "→", leftarrow: "←", Leftarrow: "⇐",
+    Rightarrow: "⇒", leftrightarrow: "↔", Leftrightarrow: "⇔",
+    mapsto: "↦", uparrow: "↑", downarrow: "↓",
+    times: "×", cdot: "·", div: "÷", pm: "±", mp: "∓",
+    leq: "≤", le: "≤", geq: "≥", ge: "≥", neq: "≠", ne: "≠",
+    approx: "≈", equiv: "≡", propto: "∝", infty: "∞",
+    sum: "Σ", prod: "Π", int: "∫", partial: "∂", nabla: "∇",
+    alpha: "α", beta: "β", gamma: "γ", delta: "δ", epsilon: "ε",
+    varepsilon: "ε", zeta: "ζ", eta: "η", theta: "θ", iota: "ι",
+    kappa: "κ", lambda: "λ", mu: "μ", nu: "ν", xi: "ξ", pi: "π",
+    rho: "ρ", sigma: "σ", tau: "τ", phi: "φ", varphi: "ϕ", chi: "χ",
+    psi: "ψ", omega: "ω", Gamma: "Γ", Delta: "Δ", Theta: "Θ",
+    Lambda: "Λ", Xi: "Ξ", Pi: "Π", Sigma: "Σ", Phi: "Φ", Psi: "Ψ",
+    Omega: "Ω",
+    in: "∈", notin: "∉", subset: "⊂", subseteq: "⊆",
+    cup: "∪", cap: "∩", emptyset: "∅", forall: "∀", exists: "∃",
+    neg: "¬", land: "∧", lor: "∨", lnot: "¬",
+    implies: "⇒", iff: "⇔",
+    ldots: "…", dots: "…", cdots: "⋯", prime: "′",
+    degree: "°", perp: "⊥", ell: "ℓ", hbar: "ℏ",
+    aleph: "ℵ", Re: "ℜ", Im: "ℑ"
+};
+
+// Sentinel characters that never appear in normal model text.
+var _MATH_SENTINEL = "\uE001";
+
+function _looksLikeMath(body) {
+    // Treat a $…$ fragment as math ONLY when it contains LaTeX-ish
+    // syntax. Ordinary amounts ("It costs $5 and $3") never match and
+    // stay literal text, so currency is never corrupted.
+    return /\\[a-zA-Z]/.test(body)
+        || /[\^_]/.test(body)
+        || /[=+<>]|≤|≥|≠|→|←|↔|×|÷|±|Σ|√/.test(body);
+}
+
+function _mathEscape(text) {
+    return String(text)
+        .replace(/&(?!(?:[a-zA-Z]+|#\d+|#[xX][0-9a-fA-F]+);)/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;");
+}
+
+function _renderMathInner(tex) {
+    var out = String(tex);
+    // Content is emitted as HTML — escape raw markup characters first.
+    // The ampersand guard is entity-aware, so already-encoded content
+    // (from the block-level escape pass) is not double-escaped.
+    out = _mathEscape(out);
+    // 1. \frac{num}{den} — loop so several fractions in one body all
+    //    convert (nested fractions converge in bounded iterations).
+    var fracGuard = 0;
+    while (/\\frac\{([^{}]*)\}\{([^{}]*)\}/.test(out) && fracGuard < 50) {
+        fracGuard += 1;
+        out = out.replace(/\\frac\{([^{}]*)\}\{([^{}]*)\}/g,
+            function (_match, num, den) {
+                return '<span class="math-frac">'
+                    + '<span class="math-frac-top">'
+                    + _renderMathInner(num) + "</span>"
+                    + '<span class="math-frac-bottom">'
+                    + _renderMathInner(den) + "</span></span>";
+            });
+    }
+    // 2. \sqrt{rad} and bare \sqrt.
+    out = out.replace(/\\sqrt\{([^{}]*)\}/g, function (_match, rad) {
+        return "√(" + _renderMathInner(rad) + ")";
+    });
+    out = out.replace(/\\sqrt([^\\a-zA-Z0-9{}])/g, "√$1");
+    // 3. Symbol commands (\rightarrow, \times, Greek letters, …).
+    out = out.replace(/\\([a-zA-Z]+)/g, function (match, name) {
+        return Object.prototype.hasOwnProperty.call(_MATH_SYMBOLS, name)
+            ? _MATH_SYMBOLS[name] : match;
+    });
+    // 4. Left/right sizing markers carry no meaning here.
+    out = out.replace(/\\left|\\right/g, "");
+    // 5. Sub/superscripts: brace form first, then a single token.
+    out = out.replace(/_\{([^{}]*)\}/g, function (_match, inner) {
+        return "<sub>" + inner + "</sub>";
+    });
+    out = out.replace(/\^\{([^{}]*)\}/g, function (_match, inner) {
+        return "<sup>" + inner + "</sup>";
+    });
+    out = out.replace(/_([0-9a-zA-Z])/g, "<sub>$1</sub>");
+    out = out.replace(/\^([0-9a-zA-Z])/g, "<sup>$1</sup>");
+    return out;
+}
+
+function _renderMath(tex) {
+    return _renderMathInner(tex);
+}
+
+/* ---------- Inline renderer ---------- */
+
 function renderInlineText(text) {
     if (!text) {
         return "";
@@ -381,15 +482,26 @@ function renderInlineText(text) {
     }
 
     // 1. Protect inline code, math and safe links so emphasis rules never
-    //    touch them.
+    //    touch them. Math bodies are stored with a sentinel so the
+    //    restore step renders them as real symbols; the bare $…$ form
+    //    requires LaTeX-ish content so prose like "It costs $5 and $3"
+    //    stays literal text.
     text = text.replace(/`[^`\n]+`/g, function (match) {
         return stash("<code>" + match.slice(1, -1) + "</code>");
     });
-    text = text.replace(/\$\$[\s\S]*?\$\$/g, function (match) {
-        return stash(match);
-    });
-    text = text.replace(/\$[^$\n]+\$/g, function (match) {
-        return stash(match);
+    text = text.replace(/\\\(([\s\S]*?)\\\)/g,
+        function (_match, body) {
+            return stash(_MATH_SENTINEL + body + _MATH_SENTINEL);
+        });
+    text = text.replace(/\$\$([^$\n]+?)\$\$/g,
+        function (_match, body) {
+            return stash(_MATH_SENTINEL + body + _MATH_SENTINEL);
+        });
+    text = text.replace(/\$([^$\n]+?)\$/g, function (match, body) {
+        if (!_looksLikeMath(body)) {
+            return match;   // ordinary text — do not corrupt
+        }
+        return stash(_MATH_SENTINEL + body + _MATH_SENTINEL);
     });
     text = text.replace(/\[([^\]\n]+)\]\((https?:\/\/[^\s)]+)\)/g,
         function (match, label, url) {
@@ -425,9 +537,15 @@ function renderInlineText(text) {
             return prefix + '<em>' + renderInlineText(inner) + '</em>';
         });
 
-    // 4. Restore protected content.
+    // 4. Restore protected content. Sentinelled bodies are rendered as
+    //    real math; plain stashes (code, links, escapes) come back as-is.
     text = text.replace(/\uE000(\d+)\uE000/g, function (match, index) {
-        return store[parseInt(index, 10)];
+        var value = store[parseInt(index, 10)] || "";
+        if (value.charAt(0) === _MATH_SENTINEL &&
+                value.charAt(value.length - 1) === _MATH_SENTINEL) {
+            return _renderMath(value.slice(1, -1));
+        }
+        return value;
     });
 
     // 5. Add spaces between word characters and emphasis tags. This is
@@ -520,10 +638,26 @@ function renderMarkdown(text) {
     // are preserved; the remaining text is decoded once, internal
     // commentary is removed, and only then escaped for HTML.
     var fenceStore = [];
+    var displayStore = [];
     var remainder = String(text || "").replace(/```[\s\S]*?(?:```|$)/g,
         function (block) {
             fenceStore.push(block);
             return "\uE000F" + (fenceStore.length - 1) + "\uE000";
+        });
+    // Display math is stashed before block parsing so multi-line
+    // formulas survive blank-line splitting (and so Markdown rules
+    // never touch LaTeX backslashes). Only pair-terminated forms are
+    // captured: a half-streamed "$$E = m" opener stays literal until
+    // the finished answer re-renders — legible, never corrupted, and
+    // never swallowing the rest of the text.
+    remainder = remainder.replace(/\$\$([^$]+)\$\$/g, function (_match, body) {
+        displayStore.push(body);
+        return "\n\uE000B" + (displayStore.length - 1) + "\uE000\n";
+    });
+    remainder = remainder.replace(/\\\[([\s\S]*?)\\\]/g,
+        function (_match, body) {
+            displayStore.push(body);
+            return "\n\uE000B" + (displayStore.length - 1) + "\uE000\n";
         });
 
     var decoded = decodeSafeEntities(remainder);
@@ -571,7 +705,9 @@ function renderMarkdown(text) {
             }).join("") + "</tr>");
         });
         out.push("</table>");
-        html.push(out.join(""));
+        // Wrapped so wide tables scroll horizontally on small screens
+        // instead of overflowing the bubble (see .table-wrap CSS).
+        html.push('<div class="table-wrap">' + out.join("") + "</div>");
         tableBuf = [];
     }
     function flushQuote() {
@@ -588,7 +724,9 @@ function renderMarkdown(text) {
     for (var i = 0; i < lines.length; i++) {
         var line = lines[i];
         var fenceMatch = line.match(/^\uE000F(\d+)\uE000$/);
-        if (fenceMatch) {
+        var displayMatch = !fenceMatch &&
+            line.match(/^\uE000B(\d+)\uE000$/);
+        if (fenceMatch || displayMatch) {
             flushPara();
             flushList();
             flushTable();
@@ -684,6 +822,13 @@ function renderMarkdown(text) {
             .replace(/```\s*$/, "")
             .replace(/\n$/, "");
         return "<pre><code>" + escapeHtml(inner) + "</code></pre>";
+    });
+    // Display math: own-line forms become centered blocks; any token
+    // that survived inside a paragraph line still becomes a valid
+    // inline-block span (never a <div> inside <p>).
+    out = out.replace(/\uE000B(\d+)\uE000/g, function (_match, index) {
+        var body = displayStore[parseInt(index, 10)] || "";
+        return '<div class="math-display">' + _renderMath(body) + "</div>";
     });
     return out;
 }

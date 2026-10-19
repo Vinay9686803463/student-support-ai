@@ -6,8 +6,112 @@ const fs = require("fs");
 const vm = require("vm");
 const assert = require("assert");
 
-function makeEl() {
+// ---------- Mini HTML parser for the innerHTML stub ----------
+// Builds real element/text nodes from markup strings so querySelector,
+// ancestor traversals and content assertions work like a real DOM.
+// Lenient by design: unknown tags (e.g. svg geometry) become generic
+// elements, event-handler attributes are captured but never executed,
+// and void elements do not open nesting.
+const _VOID_TAGS = new Set(["br", "hr", "img", "input", "meta", "link",
+    "source", "area", "base", "col", "embed", "param", "track", "wbr"]);
+
+function _openTag(el) {
+    const tag = el._tag || "div";
+    const attrs = Object.entries(el._attrs || {})
+        .map(([k, v]) => ` ${k}="${String(v).replace(/"/g, "&quot;")}"`)
+        .join("");
+    return "<" + tag + attrs + ">";
+}
+
+function _parseHtml(html) {
+    const nodes = [];
+    const stack = [_ROOTVIEW(nodes)];
+    let i = 0;
+    while (i < String(html).length) {
+        const lt = String(html).indexOf("<", i);
+        if (lt === -1) {
+            nodes_pushText(stack, String(html).slice(i));
+            break;
+        }
+        if (lt > i) {
+            nodes_pushText(stack, String(html).slice(i, lt));
+        }
+        // Find the matching '>' of this tag, honoring quotes in attrs.
+        let j = lt + 1;
+        let quote = null;
+        while (j < String(html).length) {
+            const c = String(html)[j];
+            if (quote) {
+                if (c === quote) { quote = null; }
+            } else if (c === '"' || c === "'") {
+                quote = c;
+            } else if (c === ">") {
+                break;
+            }
+            j += 1;
+        }
+        if (j >= String(html).length) {
+            // Unterminated tag: keep the rest as literal text.
+            nodes_pushText(stack, String(html).slice(lt));
+            break;
+        }
+        const raw = String(html).slice(lt + 1, j).replace(/\/$/, "");
+        i = j + 1;
+        const isClose = raw.charAt(0) === "/";
+        const name = (isClose ? raw.slice(1) : raw).trim().split(/\s+/)[0]
+            .toLowerCase();
+        if (!name || !/^[a-z][a-z0-9]*$/.test(name)) {
+            continue;   // comments / malformed: skip
+        }
+        if (isClose) {
+            for (let k = stack.length - 1; k >= 1; k--) {
+                if (stack[k]._tag === name) {
+                    stack.length = k;
+                    break;
+                }
+            }
+            continue;
+        }
+        const el = makeEl(name);
+        // Attributes (class/id/… captured for queries; handlers stored
+        // but never invoked).
+        const attrRe = /([a-zA-Z_:][-a-zA-Z0-9_:.]*)\s*=\s*("([^"]*)"|'([^']*)'|([^\s"'=<>`]+))/g;
+        let m;
+        while ((m = attrRe.exec(raw)) !== null) {
+            const key = m[1].toLowerCase();
+            const value = m[3] !== undefined ? m[3] : (m[4] !== undefined ? m[4] : m[5]);
+            el._attrs = Object.assign({}, el._attrs, { [key]: value });
+            if (key === "class") {
+                String(value).split(/\s+/).filter(Boolean)
+                    .forEach((c) => { el.classList.add(c); el.className = value; });
+            }
+        }
+        stack[stack.length - 1].children.push(el);
+        if (!_VOID_TAGS.has(name)) {
+            stack.push(el);
+        }
+    }
+    return nodes;
+
+    function _ROOTVIEW(arr) {
+        return { children: arr, _tag: undefined, classList: { contains() { return false; } } };
+    }
+    function nodes_pushText(stack, text) {
+        if (!text) { return; }
+        const parent = stack[stack.length - 1];
+        parent.children.push({
+            _tag: "text",
+            classList: { contains() { return false; } },
+            children: [],
+            innerHTML: text,
+        });
+    }
+}
+
+
+function makeEl(tag) {
     const el = {
+        _tag: tag || "div",
         children: [],
         _html: "",
         _text: "",
@@ -16,8 +120,6 @@ function makeEl() {
         style: {},
         dataset: {},
         appendChild(c) { this.children.push(c); return c; },
-        querySelector() { return makeEl(); },
-        querySelectorAll() { return []; },
         setAttribute(k, v) {
             this._attrs = Object.assign({}, this._attrs, { [k]: String(v) });
         },
@@ -42,21 +144,81 @@ function makeEl() {
         },
     };
     Object.defineProperty(el, "innerHTML", {
-        // Serialize own innerHTML plus children like a real DOM would;
-        // node content placed via appendChild must be visible to
-        // assertions inspecting the parent's innerHTML.
+        // Real-DOM serialization: when markup was parsed (or appended),
+        // this node serializes as `<tag attrs>…children…</tag>`. When a
+        // node holds only stored text (the escapeHtml idiom writes via
+        // textContent, or bare insertion), return that string directly.
         get() {
-            return this._html +
-                this.children.map((child) => child.innerHTML).join("");
+            if (this.children.length) {
+                const open = this._tag === "text" ? "" : _openTag(this);
+                const close = this._tag === "text" ? "" :
+                    "</" + this._tag + ">";
+                return open + this.children
+                    .map((child) => child.innerHTML).join("") + close;
+            }
+            return this._html;
         },
-        set(v) { this._html = String(v); },
+        // Like a real DOM: assigning innerHTML replaces ALL content with
+        // the parsed node tree of the assigned markup.
+        set(v) {
+            this._html = String(v);
+            this.children.length = 0;
+            _parseHtml(this._html).forEach((node) => this.children.push(node));
+        },
     });
+    // ---------- Minimal CSS selector engine (subset used by chat.js) ----------
+    // Supports comma groups and whitespace-separated descendant tokens of
+    // the form "tag" / ".class" / "tag.class". :not(:first-child) and
+    // attribute/child selectors simply match nothing (as of this suite,
+    // no assertion depends on them).
+    el._matchSel = function (sel) {
+        const parts = String(sel).split(".");
+        const tag = parts[0].toLowerCase();
+        const classes = parts.slice(1).filter(Boolean);
+        if (tag && tag !== "*" && this._tag !== tag) {
+            return false;
+        }
+        return classes.every((c) => this.classList.contains(c));
+    };
+    el._queryAll = function (sel, out) {
+        out = out || [];
+        String(sel).split(",").map((g) => g.trim()).filter(Boolean)
+            .forEach((group) => {
+                const tokens = group.split(/\s+/);
+                const walk = (node, i) => {
+                    node.children.forEach((child) => {
+                        const matched = child._matchSel &&
+                            child._matchSel(tokens[i]);
+                        if (matched) {
+                            if (i === tokens.length - 1) {
+                                out.push(child);
+                            } else {
+                                walk(child, i + 1);
+                            }
+                        } else {
+                            walk(child, i);
+                        }
+                    });
+                };
+                walk(this, 0);
+            });
+        return out;
+    };
+    el.querySelector = function (sel) {
+        const found = el._queryAll(sel);
+        return found.length ? found[0] : null;
+    };
+    el.querySelectorAll = function (sel) {
+        return el._queryAll(sel);
+    };
     Object.defineProperty(el, "textContent", {
         // Emulate the browser: reading innerHTML after setting
-        // textContent yields the escaped markup.
+        // textContent yields the escaped markup; assigning replaces ALL
+        // content with a single text node (no child elements).
         get() { return this._text; },
         set(v) {
             this._text = String(v);
+            this.children.length = 0;
             this._html = String(v)
                 .replace(/&/g, "&amp;")
                 .replace(/</g, "&lt;")
@@ -91,7 +253,7 @@ function makeSandbox(sseChunks, options) {
         window: { location: { href: "http://localhost/chat", search: "" }, history: { replaceState() {} } },
         document: {
             getElementById(id) { return byId[id] || makeEl(); },
-            createElement() { return makeEl(); },
+            createElement(tag) { return makeEl(tag); },
             querySelectorAll() { return []; },
             addEventListener() {},
             removeEventListener() {},
@@ -249,7 +411,11 @@ const SSE_TOKEN = (t) => `event: token\ndata: {"text": ${JSON.stringify(t)}}\n\n
         const out6 = vm.runInContext(`formatReply(${JSON.stringify(
             "The value $E=mc^2$ stays inline."
         )})`, sandbox);
-        assert.ok(out6.includes("$E=mc^2$"), "math notation preserved, got: " + out6);
+        // Math support: inline $…$ with LaTeX-ish content now renders as
+        // real subscript/superscript markup (was preserved literally in
+        // the pre-math renderer; see test 25 for the currency guard).
+        assert.ok(out6.includes("E=mc<sup>2</sup>"),
+            "inline math renders as superscript, got: " + out6);
         console.log("PASS markdown spacing around bold spans");
     } catch (e) { console.error("FAIL spacing:", e.message); process.exitCode = 1; }
 }
@@ -342,7 +508,8 @@ const SSE_TOKEN = (t) => `event: token\ndata: {"text": ${JSON.stringify(t)}}\n\n
         assert.ok(mixed.includes("<code>code</code>"), mixed);
         assert.ok(mixed.includes('href="https://example.com/path?q=1&amp;r=2"'), mixed);
         assert.ok(mixed.includes("π, é, 你好"), mixed);
-        assert.ok(render("Math $E=mc^2$ stays inline.").includes("$E=mc^2$"));
+        assert.ok(render("Math $E=mc^2$ stays inline.")
+            .includes("E=mc<sup>2</sup>"), "inline math renders");
 
         // Malicious HTML is escaped.
         const xss = render("<script>alert(1)</script> and **bold**");
@@ -360,7 +527,8 @@ const SSE_TOKEN = (t) => `event: token\ndata: {"text": ${JSON.stringify(t)}}\n\n
         const toc = render("Convert **NFA** to **DFA**.\n\n- step one\n- step two");
         assert.ok(toc.includes("<strong>NFA</strong>") && toc.includes("<ul>"), toc);
         const maths = render("The derivative of $x^2$ is $2x$.");
-        assert.ok(maths.includes("$x^2$") && maths.includes("$2x$"), maths);
+        assert.ok(maths.includes("x<sup>2</sup>") && maths.includes("2x"),
+            maths);
         const prog = render("```c\nint main() { return 0; }\n```");
         assert.ok(prog.includes("<pre><code>int main() { return 0; }</code></pre>"), prog);
 
@@ -627,6 +795,101 @@ const SSE_TOKEN = (t) => `event: token\ndata: {"text": ${JSON.stringify(t)}}\n\n
             console.log("PASS toggle works during library load; no double-toggle");
         } catch (e) { console.error("FAIL plus-toggle-while-loading:", e.message); process.exitCode = 1; }
     }, 20);
+}
+
+// 24. Full formatting pipeline on the exact reported reproduction:
+//     streamed display must be identical to the final formatReply()
+//     render (streamed and completed answers share one renderer).
+{
+    const ANSWER =
+        "## TCP vs UDP\n\nBoth**TCP**and**UDP**are transport layer "
+        + "protocols.\n\n| Feature | TCP | UDP |\n|---|---|---|\n"
+        + "| Reliable | Yes | No |\n\n"
+        + "Data flows \\(a \\rightarrow b\\) with \\(x^2\\) here.\n\n"
+        + "```\ny = a \\rightarrow b\n```\n\n"
+        + "Safe <script>alert(1)</script> and &#x61;nd, costs $5 and $3.";
+    const tokenSize = Math.ceil(ANSWER.length / 5);
+    const tokens = [];
+    for (let i = 0; i < ANSWER.length; i += tokenSize) {
+        tokens.push(ANSWER.slice(i, i + tokenSize));
+    }
+    const chunks = [SSE_SOURCES]
+        .concat(tokens.map(SSE_TOKEN))
+        .concat([SSE_DONE(true)]);
+    const { sandbox, byId } = makeSandbox(chunks);
+    loadChat(sandbox);
+    vm.runInContext(`askQuestion("Compare TCP and UDP")`, sandbox);
+    setTimeout(() => {
+        try {
+            const msgs = byId.chatMessages.children;
+            const ai = msgs.find((m) =>
+                String(m.className).includes("ai-message"));
+            assert.ok(ai, "assistant message displayed");
+            const rendered = ai.innerHTML;
+            const expected = vm.runInContext(
+                "formatReply(" + JSON.stringify(ANSWER) + ")", sandbox);
+            assert.ok(rendered.includes(expected),
+                "streamed answer rendered with the same final rules");
+            assert.ok(rendered.includes("<h2>TCP vs UDP</h2>"),
+                "heading rendered");
+            assert.ok(
+                rendered.includes(
+                    "Both <strong>TCP</strong> and <strong>UDP</strong>"),
+                "inconsistent bold spacing normalized (TCP vs UDP case)");
+            assert.ok(rendered.includes('class="table-wrap"')
+                && rendered.includes("<th>Feature</th>"),
+                "table rendered inside a scroll wrapper");
+            assert.ok(rendered.includes("a → b")
+                && rendered.includes("<sup>2</sup>"),
+                "inline LaTeX rendered as symbols");
+            assert.ok(!rendered.includes("\\("),
+                "no raw \\( \\) delimiters shown");
+            assert.ok(rendered.includes("<pre><code>")
+                && rendered.includes("\\rightarrow"),
+                "LaTeX inside code fences untouched");
+            assert.ok(rendered.includes("&lt;script&gt;"),
+                "script tags sanitized, never executed");
+            assert.ok(rendered.includes("and, costs $5 and $3"),
+                "numeric entities decode once; currency never touched");
+            console.log("PASS streamed == final render across all blocks");
+        } catch (e) { console.error("FAIL format-pipeline:", e.message); process.exitCode = 1; }
+    }, 30);
+}
+
+// 25. Math renderer details: delimiters, fractions, currency guard,
+//     display math as a real block, math inside code untouched.
+{
+    const { sandbox } = makeSandbox([]);
+    loadChat(sandbox);
+    try {
+        const t = (s) => vm.runInContext(
+            "formatReply(" + JSON.stringify(s) + ")", sandbox);
+        const fracOut = t("Ratio \\(\\frac{a}{b}\\) and \\(c^2 - x_1\\)");
+        assert.ok(fracOut.includes('class="math-frac"')
+            && fracOut.includes("math-frac-top")
+            && fracOut.includes("<sup>2</sup>")
+            && fracOut.includes("<sub>1</sub>"), "fraction + sub/sup");
+        const sumOut = t("\\(\\sum_{i=1}^{n} i \\times 2\\)");
+        assert.ok(sumOut.includes("Σ") && sumOut.includes("×")
+            && sumOut.includes("<sub>i=1</sub>"), "sum/times/greek");
+        const displayOut = t("Bound:\n\n$$E = mc^2$$\n\nrows.");
+        assert.ok(displayOut.includes('<div class="math-display">')
+            && displayOut.includes("mc<sup>2</sup>"),
+            "display math becomes a centered block");
+        const currencyOut = t("It costs $5 and $3 for tickets.");
+        assert.ok(!currencyOut.includes("math-")
+            && currencyOut.includes("$5 and $3"),
+            "currency stays literal, never math-converted");
+        const codeMathOut = t("```\ny = a \\rightarrow b\n```");
+        assert.ok(codeMathOut.includes("<pre><code>")
+            && codeMathOut.includes("\\rightarrow")
+            && !codeMathOut.includes("→</code>"),
+            "math symbols not converted inside code blocks");
+        const arrowOut = t("Both \\(fall 2025\\) $\\alpha \\rightarrow \\beta$ ends");
+        assert.ok(arrowOut.includes("α") && arrowOut.includes("→"),
+            "greek + arrow via both $ and \\( forms");
+        console.log("PASS math-lite renderer (delimiters, fractions, guards)");
+    } catch (e) { console.error("FAIL math-renderer:", e.message); process.exitCode = 1; }
 }
 
 setTimeout(() => console.log("FRONTEND HARNESS DONE"), 450);
