@@ -45,10 +45,30 @@ def openai_available():
         return False
 
 
-def _client(timeout):
-    from openai import OpenAI
+_CLIENT_CACHE = {"key": None, "cls": None, "clients": {}}
 
-    return OpenAI(api_key=_raw_key(), timeout=float(timeout))
+
+def _client(timeout):
+    import openai as _openai_module
+
+    OpenAI = _openai_module.OpenAI
+    key = _raw_key()
+    # One client per timeout bucket (rebuilt if the key changes): the
+    # SDK keeps its own connection pool, so repeat messages reuse TLS
+    # sessions instead of paying a fresh handshake every request.
+    # The cache is also dropped whenever the OpenAI class object
+    # itself is replaced (tests patch openai.OpenAI per case); in
+    # normal runtime the class never changes and the pool persists.
+    bucket = round(max(float(timeout), 1.0), 1)
+    if _CLIENT_CACHE["key"] != key or _CLIENT_CACHE["cls"] is not OpenAI:
+        _CLIENT_CACHE["key"] = key
+        _CLIENT_CACHE["cls"] = OpenAI
+        _CLIENT_CACHE["clients"] = {}
+    cached = _CLIENT_CACHE["clients"].get(bucket)
+    if cached is None:
+        cached = OpenAI(api_key=key, timeout=bucket)
+        _CLIENT_CACHE["clients"][bucket] = cached
+    return cached
 
 
 def classify_openai_error(error):

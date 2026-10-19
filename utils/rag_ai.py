@@ -12,11 +12,23 @@ load_dotenv()
 
 
 # Mode defaults: retrieval budget + provider timeout per mode.
-# Full grounded answers take ~15-30s to generate; budgets reflect
-# measured latency (fast streams, so time-to-first-token stays low).
+# Timeouts are ceilings: a healthy answer streams in ~4-15s, so a
+# hung provider must bail well before the user is left waiting a
+# minute+. Overridable via PROVIDER_TIMEOUT_FAST / PROVIDER_TIMEOUT_DETAILED.
+def _env_timeout(name, default):
+    """Provider ceiling from env (seconds), bounded to at least 5s."""
+    raw = (os.getenv(name) or "").strip()
+    if not raw:
+        return default
+    try:
+        return max(float(raw), 5)
+    except ValueError:
+        return default
+
+
 MODE_TIMEOUTS = {
-    "fast": 45,
-    "detailed": 120,
+    "fast": _env_timeout("PROVIDER_TIMEOUT_FAST", 30.0),
+    "detailed": _env_timeout("PROVIDER_TIMEOUT_DETAILED", 75.0),
 }
 
 
@@ -125,11 +137,67 @@ def get_last_provider_error():
     return dict(_LAST_PROVIDER_ERROR)
 
 
-def _record_provider_error(code, model=None):
+# ----------------------------------------------------------------------------
+# Provider cooldown (bounded fallback strategy)
+#
+# Known-fatal provider states — a rejected key, an exhausted quota — cannot
+# change between two attempts inside one message, and historically re-attempting
+# them on every message added full provider timeouts to every answer (the
+# "thinking for minutes" symptom). After such a failure the provider is parked
+# briefly; meanwhile answers still work instantly through the honest study-bank
+# fallback path. Purely time-based: service resumes automatically, and any
+# successful generation clears it immediately. Never prints or stores secrets.
+# ----------------------------------------------------------------------------
+
+_COOLDOWN_CODES = frozenset({
+    "auth_invalid", "quota_exceeded", "quota_exhausted",
+})
+_PROVIDER_COOLDOWN = {"provider": None, "code": None, "until": 0.0}
+
+
+def _provider_cooldown_seconds():
+    return _env_timeout("PROVIDER_COOLDOWN_SECONDS", 300.0)
+
+
+def _start_provider_cooldown(code, provider=None):
+    seconds = _provider_cooldown_seconds()
+    if seconds <= 0:
+        return
+    if code in _COOLDOWN_CODES:
+        _PROVIDER_COOLDOWN.update(
+            {
+                "provider": provider or "unknown",
+                "code": code,
+                "until": time.monotonic() + seconds,
+            }
+        )
+
+
+def _provider_cooldown_code(provider=None):
+    """Active cooldown code for *provider*, or None when retry is OK.
+
+    Scoped per provider: an exhausted local Ollama or a bad OpenAI key
+    must not park Gemini, and vice versa.
+    """
+    if _PROVIDER_COOLDOWN["until"] <= time.monotonic():
+        return None
+    if provider and _PROVIDER_COOLDOWN["provider"] not in (None, provider):
+        return None
+    return _PROVIDER_COOLDOWN["code"]
+
+
+def _clear_provider_cooldown():
+    _PROVIDER_COOLDOWN.update(
+        {"provider": None, "code": None, "until": 0.0}
+    )
+
+
+def _record_provider_error(code, model=None, provider=None):
     _LAST_PROVIDER_ERROR.update(
         {"code": code, "model": model, "at": time.time()}
     )
     print(f"PROVIDER ERROR [{code}] model={model or 'unknown'}")
+    _start_provider_cooldown(code, provider=provider)
 
 
 _DEFAULT_GEMINI_MODELS = (
@@ -157,27 +225,62 @@ def _model_candidates():
     return names or _DEFAULT_GEMINI_MODELS
 
 
-def _gemini_models():
+_GENAI_STATE = {"key": None}
+_GENAI_MODEL_CACHE = {}
+
+
+def _ensure_genai():
+    """Configure the Google SDK once per key change (not per message)."""
     import google.generativeai as genai
 
-    genai.configure(
-        api_key=_gemini_key()
-    )
+    key = _gemini_key()
+    if key and _GENAI_STATE["key"] != key:
+        genai.configure(api_key=key)
+        _GENAI_STATE["key"] = key
+        _GENAI_MODEL_CACHE.clear()
+    return genai
+
+
+def _gemini_models():
+    """Reusable GenerativeModel objects, in candidate order.
+
+    Model objects are cached for the life of the process — building
+    them inside the request path is pure per-message overhead.
+    """
+    genai = _ensure_genai()
 
     for model_name in _model_candidates():
-        try:
-            yield genai.GenerativeModel(model_name)
-        except Exception:
-            continue
+        model = _GENAI_MODEL_CACHE.get(model_name)
+        if model is None:
+            try:
+                model = genai.GenerativeModel(model_name)
+            except Exception:
+                continue
+            _GENAI_MODEL_CACHE[model_name] = model
+        yield model
+
+
+# Errors that cannot improve by switching model name/account-side state:
+# one attempt is always enough before falling back honestly.
+_NO_FALLBACK_CODES = frozenset({
+    "timeout", "auth_invalid", "auth_missing", "quota_exceeded",
+    "rate_limited",
+})
 
 
 def _call_gemini(prompt, timeout=30):
     """
     Send the RAG-grounded prompt to Gemini; return the full answer
     text or None. Server-side only: the API key never leaves the backend.
+
+    Bounded by design: a timeout is never paid twice (one wait is
+    already the user-visible worst case), and quick failures rotate to
+    the next configured model at most once.
     """
+    tried = 0
 
     for model in _gemini_models():
+        tried += 1
 
         model_name = getattr(model, "model_name", None) or getattr(
             model, "_model_name", "unknown"
@@ -199,20 +302,31 @@ def _call_gemini(prompt, timeout=30):
 
             if answer:
                 print(f"GEMINI OK model={model_name} chars={len(answer)}")
+                _clear_provider_cooldown()
                 return answer
 
         except Exception as error:
-            _record_provider_error(
-                _classify_provider_error(error), model=model_name
-            )
-            continue
+            code = _classify_provider_error(error)
+            _record_provider_error(code, model=model_name, provider="gemini")
+            if code in _NO_FALLBACK_CODES or tried > 1:
+                break
 
     return None
 
 
 def _stream_gemini(prompt, timeout=30):
-    """Yield Gemini answer pieces as they arrive (empty if unavailable)."""
+    """Yield Gemini answer pieces as they arrive (empty if unavailable).
+
+    Bounded by design: at most one fallback candidate, no second
+    timeout wait, and — critically — an answer that already emitted
+    pieces is never restarted by another model (that would duplicate
+    the streamed text).
+    """
+    emitted = False
+    tried = 0
+
     for model in _gemini_models():
+        tried += 1
         model_name = getattr(model, "model_name", None) or getattr(
             model, "_model_name", "unknown"
         )
@@ -224,19 +338,21 @@ def _stream_gemini(prompt, timeout=30):
                     "timeout": timeout
                 },
             )
-            yielded = False
             for chunk in response:
                 piece = (getattr(chunk, "text", "") or "")
                 if piece:
-                    yielded = True
+                    emitted = True
                     yield piece
-            if yielded:
+            if emitted:
+                _clear_provider_cooldown()
                 return
         except Exception as error:
-            _record_provider_error(
-                _classify_provider_error(error), model=model_name
-            )
-            continue
+            code = _classify_provider_error(error)
+            _record_provider_error(code, model=model_name, provider="gemini")
+            if emitted:
+                break
+            if code in _NO_FALLBACK_CODES or tried > 1:
+                break
 
 
 def _offline_general_explanation(question):
@@ -284,7 +400,7 @@ def _provider_hint(provider, error_code):
     # Specific error codes first: they say what actually failed.
     # Provider setup lines are the fallback when the code alone
     # does not prescribe an action.
-    if error_code == "quota_exhausted":
+    if error_code in ("quota_exhausted", "quota_exceeded"):
         return ("The AI account has no free quota remaining; switch "
                 "AI_PROVIDER to a free option (gemini free-tier or "
                 "local ollama) and restart.")
@@ -352,6 +468,7 @@ def answer_with_rag(
     recent_topics=None,
     recent_suggestions=None,
     semester=None,
+    attachments_text=None,
 ):
     """
     Main RAG-powered answer function.
@@ -407,7 +524,11 @@ def answer_with_rag(
         cache_key(question, subject_code, module_number, mode, kb_version)
     )
 
-    if cached is not None:
+    # Attached material changes the answer, so requests carrying
+    # attachments bypass the shared cache instead of widening the
+    # cache key (attachment-modified answers must never be served to
+    # a later attachment-free ask of the same question).
+    if cached is not None and not attachments_text:
 
         cached = dict(cached)
         cached["cached"] = True
@@ -426,6 +547,7 @@ def answer_with_rag(
         limit=limit,
         max_chars_per_source=MODE_CONTEXT_CHARS[mode],
         history=history,
+        attachments_text=attachments_text,
     )
 
     results = rag_data["results"]
@@ -435,6 +557,12 @@ def answer_with_rag(
     max_tokens = {"fast": 800, "detailed": 1800}[mode]
 
     provider = active_provider()
+
+    # Bounded fallback strategy: while a fatal provider state (bad key /
+    # exhausted quota) is parked, skip straight to the honest study-bank
+    # fallback instead of paying a network timeout on every message.
+    if provider and _provider_cooldown_code(provider):
+        provider = None
 
     # Try the configured model provider (OpenAI by default).
     if provider == "openai":
@@ -449,6 +577,7 @@ def answer_with_rag(
 
             if answer:
 
+                _clear_provider_cooldown()
                 response = {
                     "answer": answer,
                     "sources": results,
@@ -466,16 +595,18 @@ def answer_with_rag(
                         subject_code=subject_code,
                         semester=semester),
                 }
-                cache_put(
-                    cache_key(question, subject_code, module_number, mode, kb_version),
-                    response,
-                )
+                if not attachments_text:
+                    cache_put(
+                        cache_key(question, subject_code, module_number, mode, kb_version),
+                        response,
+                    )
                 return response
 
         except Exception as error:
             _record_provider_error(
                 openai_provider.classify_openai_error(error),
                 model=openai_provider.configured_model(),
+                provider="openai",
             )
 
     elif provider == "ollama":
@@ -492,6 +623,7 @@ def answer_with_rag(
 
             if answer:
 
+                _clear_provider_cooldown()
                 response = {
                     "answer": answer,
                     "sources": results,
@@ -509,16 +641,18 @@ def answer_with_rag(
                         subject_code=subject_code,
                         semester=semester),
                 }
-                cache_put(
-                    cache_key(question, subject_code, module_number, mode, kb_version),
-                    response,
-                )
+                if not attachments_text:
+                    cache_put(
+                        cache_key(question, subject_code, module_number, mode, kb_version),
+                        response,
+                    )
                 return response
 
         except Exception as error:
             _record_provider_error(
                 _ollama.classify_ollama_error(error),
                 model=_ollama.configured_model(),
+                provider="ollama",
             )
 
     elif provider == "gemini" and gemini_available():
@@ -532,6 +666,7 @@ def answer_with_rag(
 
             if answer:
 
+                _clear_provider_cooldown()
                 response = {
                     "answer": answer,
                     "sources": results,
@@ -549,14 +684,16 @@ def answer_with_rag(
                         subject_code=subject_code,
                         semester=semester),
                 }
-                cache_put(
-                    cache_key(question, subject_code, module_number, mode, kb_version),
-                    response,
-                )
+                if not attachments_text:
+                    cache_put(
+                        cache_key(question, subject_code, module_number, mode, kb_version),
+                        response,
+                    )
                 return response
 
         except Exception as error:
-            _record_provider_error(_classify_provider_error(error))
+            _record_provider_error(_classify_provider_error(error),
+                                   provider="gemini")
 
     # No AI provider available. Never present raw excerpts as the
     # answer: say so honestly, add a labeled general explanation
@@ -588,10 +725,11 @@ def answer_with_rag(
                 subject_code=subject_code,
                 semester=semester),
         }
-        cache_put(
-            cache_key(question, subject_code, module_number, mode, kb_version),
-            response,
-        )
+        if not attachments_text:
+            cache_put(
+                cache_key(question, subject_code, module_number, mode, kb_version),
+                response,
+            )
         return response
 
     return {
@@ -656,7 +794,8 @@ def stream_answer(question, subject_code=None, module_number=None,
                   mode="detailed", limit=None, history=None,
                   recent_topics=None,
                   recent_suggestions=None,
-                  semester=None):
+                  semester=None,
+                  attachments_text=None):
     """Yield SSE-ready dicts: context event, answer pieces, done event.
 
     Uses Gemini streaming when configured; otherwise streams the
@@ -665,16 +804,54 @@ def stream_answer(question, subject_code=None, module_number=None,
     mode = normalize_mode(mode)
     started = time.monotonic()
 
+    question = (question or "").strip()
+
     if limit in (None, 0):
         limit = MODE_LIMITS[mode]
 
+    # Instant cache reuse for the streaming path: the key includes the
+    # knowledge-base version AND fingerprints of any private context
+    # (conversation history / attachments), so a hit can only serve the
+    # answer computed from byte-identical context. Chunks stream in big
+    # honest pieces — no artificial typing delay.
+    kb_version = current_kb_version()
+    cache_key_value = cache_key(
+        question, subject_code, module_number, mode, kb_version,
+        history=history, attachments_text=attachments_text,
+    )
+    cached = cache_get(cache_key_value)
+    if cached is not None:
+        cached = dict(cached)
+        answer_text = cached.get("answer") or ""
+        for start in range(0, len(answer_text), 1200):
+            yield {"event": "token",
+                   "data": {"text": answer_text[start:start + 1200]}}
+        yield {"event": "done", "data": {
+            "used_rag": bool(cached.get("sources")),
+            "used_ai": bool(cached.get("used_ai")),
+            "provider": cached.get("provider"),
+            "answer_kind": cached.get("answer_kind"),
+            "error_code": cached.get("error_code"),
+            "mode": mode,
+            "latency_ms": int((time.monotonic() - started) * 1000),
+            "suggestions": (cached.get("suggestions")
+                            or generate_followup_suggestions(
+                                question, answer_text, recent_topics,
+                                recent_suggestions=recent_suggestions,
+                                subject_code=subject_code,
+                                semester=semester)),
+            "cached": True,
+        }}
+        return
+
     rag_data = prepare_rag_request(
-        question=(question or "").strip(),
+        question=question,
         subject_code=subject_code,
         module_number=module_number,
         limit=limit,
         max_chars_per_source=MODE_CONTEXT_CHARS[mode],
         history=history,
+        attachments_text=attachments_text,
     )
     results = rag_data["results"]
     prompt = rag_data["prompt"]
@@ -684,6 +861,13 @@ def stream_answer(question, subject_code=None, module_number=None,
     timeout = MODE_TIMEOUTS[mode]
     max_tokens = {"fast": 800, "detailed": 1800}[mode]
     provider = active_provider()
+
+    # Bounded fallback strategy (same as answer_with_rag): skip the
+    # provider while a fatal state (bad key / exhausted quota) is parked,
+    # so repeat questions cannot re-pay the network wait.
+    if provider and _provider_cooldown_code(provider):
+        provider = None
+
     streamed = False
     stream_provider = None
     answer_parts = []
@@ -727,7 +911,8 @@ def stream_answer(question, subject_code=None, module_number=None,
                 answer_parts.append(piece)
                 yield {"event": "token", "data": {"text": piece}}
         except Exception as stream_error:
-            _record_provider_error(_classify_provider_error(stream_error))
+            _record_provider_error(_classify_provider_error(stream_error),
+                                   provider="gemini")
 
     if not streamed:
         # No language model reachable: stream the same honest
@@ -759,6 +944,24 @@ def stream_answer(question, subject_code=None, module_number=None,
         subject_code=subject_code,
         semester=semester,
     )
+    if streamed and full_answer:
+        # Remember AI-generated answers for instant reuse. Only real
+        # generated answers are cached here; fallback/limitation texts
+        # always regenerate fresh so recovered provider state is
+        # reflected immediately.
+        cache_put(cache_key_value, {
+            "answer": full_answer,
+            "sources": results,
+            "used_rag": bool(results),
+            "used_ai": True,
+            "provider": stream_provider,
+            "answer_kind": "ai_generated",
+            "error_code": None,
+            "mode": mode,
+            "latency_ms": int((time.monotonic() - started) * 1000),
+            "cached": False,
+            "suggestions": suggestions,
+        })
     yield {"event": "done", "data": {
         "used_rag": bool(results),
         "used_ai": streamed,
@@ -771,6 +974,7 @@ def stream_answer(question, subject_code=None, module_number=None,
         "mode": mode,
         "latency_ms": int((time.monotonic() - started) * 1000),
         "suggestions": suggestions,
+        "cached": False,
     }}
 
 
@@ -1093,6 +1297,14 @@ def _collect_strings(values):
     return result
 
 
+# Memoized subject-catalog read: follow-up suggestions asked the
+# database twice per chat message (subjects + knowledge_documents).
+# The catalog changes rarely, so a short TTL keeps results honest
+# while removing the per-message round trips.
+_SUBJECTS_CACHE = {"key": None, "at": 0.0, "value": None}
+_SUBJECTS_TTL_SECONDS = 120.0
+
+
 def get_supported_subjects(semester=None, subject_code=None, branch=None,
                            scheme=None, db_session=None,
                            include_materials=True):
@@ -1101,6 +1313,17 @@ def get_supported_subjects(semester=None, subject_code=None, branch=None,
         sem = int(sem)
     except (TypeError, ValueError):
         sem = 5
+
+    cache_key_value = (sem, str(subject_code or "").strip(),
+                       str(branch or "").strip(), str(scheme or "").strip(),
+                       bool(include_materials)) if db_session is None else None
+    now = time.monotonic()
+    if cache_key_value is not None:
+        hit = _SUBJECTS_CACHE
+        if (hit["key"] == cache_key_value
+                and now - hit["at"] < _SUBJECTS_TTL_SECONDS
+                and hit["value"] is not None):
+            return list(hit["value"])
 
     session = db_session
     if session is None:
@@ -1200,6 +1423,11 @@ def get_supported_subjects(semester=None, subject_code=None, branch=None,
                         or s["name"].strip().lower() == wanted.lower()]
             if filtered:
                 subjects = filtered
+
+    if cache_key_value is not None:
+        _SUBJECTS_CACHE.update(
+            {"key": cache_key_value, "at": now, "value": subjects}
+        )
 
     return subjects
 
@@ -1399,5 +1627,22 @@ def fifth_semester_subjects(*args, **kwargs):
     return get_supported_subjects(*args, **kwargs)
 
 
-SUPPORTED_FIFTH_SEMESTER_SUBJECTS = get_supported_subjects(semester=5)
-SUPPORTED_5TH_SEMESTER_SUBJECTS = SUPPORTED_FIFTH_SEMESTER_SUBJECTS
+def _lazy_fifth_semester_subjects(name):
+    value = get_supported_subjects(semester=5)
+    globals()[name] = value
+    return value
+
+
+def __getattr__(name):
+    """(PEP 562) Legacy fifth-semester subject constants, on demand.
+
+    These used to run two database queries at module import — charging
+    every worker boot / serverless instance (and, via app.py's boot
+    banner, the first chat request) for data the suggestion engine
+    already fetches lazily. Resolving them on first access keeps the
+    names compatible with any external caller while making imports free.
+    """
+    if name in ("SUPPORTED_FIFTH_SEMESTER_SUBJECTS",
+                "SUPPORTED_5TH_SEMESTER_SUBJECTS"):
+        return _lazy_fifth_semester_subjects(name)
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")

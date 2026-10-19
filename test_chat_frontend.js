@@ -18,14 +18,37 @@ function makeEl() {
         appendChild(c) { this.children.push(c); return c; },
         querySelector() { return makeEl(); },
         querySelectorAll() { return []; },
-        setAttribute() {},
+        setAttribute(k, v) {
+            this._attrs = Object.assign({}, this._attrs, { [k]: String(v) });
+        },
+        getAttribute(k) { return (this._attrs || {})[k] ?? null; },
         remove() {},
         focus() {},
         select() {},
-        classList: { toggle() {}, add() {}, remove() {} },
+        // Real DOM parity for the "append and keep what came before"
+        // placement mode chat.js uses for message avatars.
+        insertAdjacentHTML(_position, html) { this._html += String(html); },
+        classList: {
+            _s: new Set(),
+            add(c) { this._s.add(c); },
+            remove(c) { this._s.delete(c); },
+            toggle(c, force) {
+                const has = this._s.has(c);
+                const want = force === undefined ? !has : !!force;
+                if (want) { this._s.add(c); } else { this._s.delete(c); }
+                return want;   // presence after the call, like the DOM
+            },
+            contains(c) { return this._s.has(c); },
+        },
     };
     Object.defineProperty(el, "innerHTML", {
-        get() { return this._html; },
+        // Serialize own innerHTML plus children like a real DOM would;
+        // node content placed via appendChild must be visible to
+        // assertions inspecting the parent's innerHTML.
+        get() {
+            return this._html +
+                this.children.map((child) => child.innerHTML).join("");
+        },
         set(v) { this._html = String(v); },
     });
     Object.defineProperty(el, "textContent", {
@@ -45,12 +68,17 @@ function makeEl() {
     return el;
 }
 
-function makeSandbox(sseChunks) {
+function makeSandbox(sseChunks, options) {
+    options = options || {};
     const byId = {};
     const ids = ["chatInput", "chatMessages", "sendButton", "stopButton",
-        "engineStatus", "modeLabel"];
+        "engineStatus", "modeLabel",
+        "libraryOverlay", "libraryList", "librarySearch",
+        "plusMenu", "inputBox", "plusButton"];
     ids.forEach((id) => { byId[id] = makeEl(); });
     const fetchCalls = [];
+    const libraryCalls = [];
+    const libraryFetch = options.libraryFetch || null;
     const sandbox = {
         console,
         localStorage: { _s: {}, getItem(k) { return this._s[k] ?? null; }, setItem(k, v) { this._s[k] = v; } },
@@ -66,9 +94,17 @@ function makeSandbox(sseChunks) {
             createElement() { return makeEl(); },
             querySelectorAll() { return []; },
             addEventListener() {},
+            removeEventListener() {},
         },
         fetch(url, opts) {
-            fetchCalls.push({ url, body: JSON.parse(opts.body) });
+            fetchCalls.push({ url, body: opts && opts.body ? JSON.parse(opts.body) : null });
+            if (url === "/api/chat/library") {
+                libraryCalls.push({ url, signal: opts && opts.signal });
+                if (!libraryFetch) {
+                    return Promise.reject(new Error("no library route configured in test"));
+                }
+                return libraryFetch(opts && opts.signal);
+            }
             const enc = new TextEncoder();
             const bufs = sseChunks.map((s) => enc.encode(s));
             let i = 0;
@@ -89,10 +125,11 @@ function makeSandbox(sseChunks) {
             });
         },
         setTimeout: (fn) => 0,
+        clearTimeout: () => {},
     };
     sandbox.window.document = sandbox.document;
     sandbox.globalThis = sandbox;
-    return { sandbox, byId, fetchCalls };
+    return { sandbox, byId, fetchCalls, libraryCalls };
 }
 
 function loadChat(sandbox) {
@@ -352,4 +389,244 @@ const SSE_TOKEN = (t) => `event: token\ndata: {"text": ${JSON.stringify(t)}}\n\n
     } catch (e) { console.error("FAIL retry formatting:", e.message); process.exitCode = 1; }
 }
 
-setTimeout(() => console.log("FRONTEND HARNESS DONE"), 300);
+// 18. Library: prefetch keeps a document cache; reopening never refetches.
+{
+    const DOC = { id: 7, subject_code: "BCS502", subject_name: "Computer Networks",
+        title: "Module 1 - Network Layer", filename: "m1.pdf",
+        module_number: 1, page_count: 12 };
+    const respond = (signal) => Promise.resolve({
+        ok: true, status: 200,
+        json: () => Promise.resolve({ ok: true, documents: [DOC] }),
+    });
+    const { sandbox, byId, libraryCalls } = makeSandbox([], { libraryFetch: respond });
+    loadChat(sandbox);
+    vm.runInContext("prefetchLibrary()", sandbox);
+    setTimeout(() => {
+        try {
+            assert.strictEqual(libraryCalls.length, 1, "prefetch made one request");
+            vm.runInContext("openLibrary()", sandbox);
+            assert.ok(byId.libraryList.innerHTML.includes("BCS502")
+                && byId.libraryList.innerHTML.includes("m1.pdf"),
+                "documents render on open (badge + filename label)");
+            vm.runInContext("closeLibrary()", sandbox);
+            vm.runInContext("openLibrary()", sandbox);
+            assert.strictEqual(libraryCalls.length, 1,
+                "reopening serves the cache instead of refetching");
+            console.log("PASS library prefetch renders instantly + cache on reopen");
+        } catch (e) { console.error("FAIL library-prefetch:", e.message); process.exitCode = 1; }
+    }, 20);
+}
+
+// 19. Library: the X closes during an in-flight load and aborts the request.
+{
+    const state = { mode: "hanging", signal: null };
+    const respond = (signal) => {
+        state.signal = signal;
+        return new Promise((resolve, reject) => {
+            const onAbort = () => reject(new Error("Aborted"));
+            if (signal && signal.aborted) { reject(new Error("Aborted")); return; }
+            if (signal) { signal.addEventListener("abort", onAbort); }
+            // Otherwise pending forever: only abort can settle it.
+        });
+    };
+    const { sandbox, byId } = makeSandbox([], { libraryFetch: respond });
+    loadChat(sandbox);
+    vm.runInContext("openLibrary()", sandbox);
+    setTimeout(() => {
+        try {
+            assert.strictEqual(byId.libraryOverlay.hidden, false, "dialog opens");
+            assert.ok(byId.libraryList.innerHTML.includes("Loading library"),
+                "loading state visible");
+            vm.runInContext("closeLibrary()", sandbox);
+            assert.strictEqual(byId.libraryOverlay.hidden, true,
+                "X closes the dialog immediately while loading");
+            assert.strictEqual(state.signal.aborted, true,
+                "in-flight request aborted on close");
+            // Reopen must retry cleanly (nothing sticky): the next test
+            // covers reopen-after-failure; the cache path is test 18.
+            console.log("PASS close works while loading and aborts the fetch");
+        } catch (e) { console.error("FAIL library-close-loading:", e.message); process.exitCode = 1; }
+    }, 10);
+}
+
+// 20. Library: API failure = error state + retry; retry succeeds; Ok but
+//     empty library shows the empty-state message (not an error).
+{
+    let mode = "fail";
+    const DOC = { id: 2, subject_code: "BCS501", subject_name: "Software Engineering",
+        title: "Module 1 - SDLC", filename: "sdlc-module-1.pdf",
+        module_number: 1, page_count: 9 };
+    const respond = (signal) => {
+        if (mode === "fail") {
+            return Promise.reject(new Error("network down"));
+        }
+        if (mode === "empty") {
+            return Promise.resolve({ ok: true, status: 200,
+                json: () => Promise.resolve({ ok: true, documents: [] }) });
+        }
+        return Promise.resolve({ ok: true, status: 200,
+            json: () => Promise.resolve({ ok: true, documents: [DOC] }) });
+    };
+    const { sandbox, byId, libraryCalls } = makeSandbox([], { libraryFetch: respond });
+    loadChat(sandbox);
+    vm.runInContext("openLibrary()", sandbox);
+    setTimeout(() => {
+        try {
+            assert.ok(byId.libraryList.innerHTML.includes("Could not load the library"),
+                "error state shown");
+            assert.ok(byId.libraryList.innerHTML.includes("Try again"),
+                "retry button offered");
+            assert.strictEqual(mode === "fail" && byId.libraryList.innerHTML.includes("No study documents"),
+                false, "an API failure is never shown as an empty library");
+            mode = "ok";
+            vm.runInContext("retryLibraryLoad()", sandbox);
+        } catch (e) { console.error("FAIL library-error-state:", e.message); process.exitCode = 1; return; }
+        setTimeout(() => {
+            try {
+                assert.ok(byId.libraryList.innerHTML.includes("sdlc-module-1.pdf"),
+                    "retry loads documents");
+                const openingCalls = libraryCalls.length;
+                vm.runInContext("closeLibrary()", sandbox);
+                mode = "empty";
+                vm.runInContext("openLibrary()", sandbox); // opens from cache AFTER success
+                assert.strictEqual(libraryCalls.length, openingCalls,
+                    "cached success is reused, no refetch");
+                assert.ok(byId.libraryList.innerHTML.includes("sdlc-module-1.pdf"),
+                    "cache still shows documents");
+                // True empty-library render (200 OK, zero documents):
+                // empty-state message, never an error banner.
+                vm.runInContext("renderLibrary([])", sandbox);
+                assert.ok(byId.libraryList.innerHTML.includes(
+                    "No study documents"), "empty state message shown");
+                assert.strictEqual(
+                    byId.libraryList.innerHTML.includes("Could not load"),
+                    false, "empty library is not an error state");
+                console.log("PASS library error/retry flow + cached reuse");
+            } catch (e) { console.error("FAIL library-error-state:", e.message); process.exitCode = 1; }
+        }, 20);
+    }, 10);
+}
+
+// 21. Library: Escape closes even while a request is pending; single kb handler.
+{
+    const respond = () => new Promise(() => {});   // pending forever
+    const { sandbox, byId, libraryCalls } = makeSandbox([], { libraryFetch: respond });
+    loadChat(sandbox);
+    vm.runInContext("openLibrary()", sandbox);
+    setTimeout(() => {
+        try {
+            assert.strictEqual(libraryCalls.length, 1, "exactly one in-flight request");
+            vm.runInContext(
+                '_libraryKeydown({ key: "Escape", stopPropagation() {} })', sandbox);
+            assert.strictEqual(byId.libraryOverlay.hidden, true,
+                "Escape closes without waiting for the API");
+            assert.strictEqual(libraryCalls[0].signal.aborted, true,
+                "pending request aborted on Escape");
+            // Second close is a no-op safe repeat (no duplicate listeners).
+            vm.runInContext("closeLibrary()", sandbox);
+            console.log("PASS Escape closes during load, single handler binding");
+        } catch (e) { console.error("FAIL library-escape:", e.message); process.exitCode = 1; }
+    }, 10);
+}
+
+// 22. "+"/✕ toggle: one button, one state — opens, closes, reopens; the
+//     icon and aria attributes stay in sync with real menu visibility.
+{
+    const { sandbox, byId } = makeSandbox([]);
+    loadChat(sandbox);
+    vm.runInContext("togglePlusMenu(null)", sandbox);
+    try {
+        assert.strictEqual(byId.plusMenu.hidden, false, "menu opens");
+        assert.ok(byId.plusButton.classList.contains("open"),
+            "icon shows the open (✕) state");
+        assert.strictEqual(byId.plusButton.getAttribute("aria-expanded"),
+            "true");
+        assert.strictEqual(byId.plusButton.getAttribute("aria-label"),
+            "Close menu", "accessible name switches to Close (no tooltip)");
+        assert.strictEqual(vm.runInContext("plusMenuOpen", sandbox), true,
+            "one shared state variable drives everything");
+        // Second toggle = click ✕: menu closes, icon reverts to "+".
+        vm.runInContext("togglePlusMenu(null)", sandbox);
+        assert.strictEqual(byId.plusMenu.hidden, true,
+            "✕ click closes the menu");
+        assert.ok(!byId.plusButton.classList.contains("open"),
+            "icon returns to + (no .open class)");
+        assert.strictEqual(byId.plusButton.getAttribute("aria-expanded"),
+            "false");
+        assert.strictEqual(byId.plusButton.getAttribute("aria-label"),
+            "Open menu");
+        // Third toggle: reopening works again.
+        vm.runInContext("togglePlusMenu(null)", sandbox);
+        assert.strictEqual(byId.plusMenu.hidden, false, "reopens");
+        vm.runInContext("closePlusMenu()", sandbox);
+        assert.strictEqual(byId.plusMenu.hidden, true, "closes again");
+        console.log("PASS plus/✕ toggle cycles with synced icon + aria");
+    } catch (e) { console.error("FAIL plus-toggle:", e.message); process.exitCode = 1; }
+}
+
+// 23. Toggle works while Add-from-library is loading; a menu item never
+//     double-toggles the menu.
+{
+    let mode = "hanging";
+    let libSignal = null;
+    const respond = (signal) => {
+        libSignal = signal;
+        return mode === "hanging"
+            ? new Promise((resolve, reject) => {
+                const onAbort = () => reject(new Error("Aborted"));
+                if (signal && signal.aborted) { reject(new Error("Aborted")); return; }
+                if (signal) { signal.addEventListener("abort", onAbort); }
+            })
+            : Promise.resolve({ ok: true, status: 200,
+                json: () => Promise.resolve({ ok: true, documents: [
+                    { id: 3, subject_code: "BCS503", subject_name: "DBMS",
+                      title: "Module 1", filename: "db1.pdf",
+                      module_number: 1, page_count: 6 } ] }) });
+    };
+    const { sandbox, byId, libraryCalls } = makeSandbox([], { libraryFetch: respond });
+    loadChat(sandbox);
+    // Open the menu, pick "Add from library": menu closes once; the
+    // dialog starts loading and keeps loading.
+    vm.runInContext("togglePlusMenu(null)", sandbox);
+    vm.runInContext("choosePlusAction('library')", sandbox);
+    try {
+        assert.strictEqual(vm.runInContext("plusMenuOpen", sandbox), false,
+            "choosing a menu item closes the menu exactly once");
+        assert.strictEqual(byId.plusMenu.hidden, true, "menu is closed");
+        assert.strictEqual(byId.libraryOverlay.hidden, false,
+            "library dialog opened");
+        assert.strictEqual(libraryCalls.length, 1, "one library request");
+        // While the library request is still in flight, the ✕ toggle
+        // must keep working immediately.
+        vm.runInContext("togglePlusMenu(null)", sandbox);   // open
+        assert.strictEqual(byId.plusMenu.hidden, false,
+            "toggle still opens while library loads");
+        vm.runInContext("togglePlusMenu(null)", sandbox);   // close via ✕
+        assert.strictEqual(byId.plusMenu.hidden, true,
+            "toggle closes immediately while library loads");
+        assert.strictEqual(libSignal.aborted, false,
+            "library request untouched by the menu toggle");
+        assert.ok(byId.libraryList.innerHTML.includes("Loading library"),
+            "library still loading, unaffected");
+        // Escape closes the pending library dialog and aborts its fetch.
+        vm.runInContext(
+            '_libraryKeydown({ key: "Escape", stopPropagation() {} })',
+            sandbox);
+        assert.strictEqual(libSignal.aborted, true,
+            "Escape aborts the pending library request");
+        // Retry from a clean state still works.
+        mode = "ok";
+        vm.runInContext("openLibrary()", sandbox);
+    } catch (e) { console.error("FAIL plus-toggle-while-loading:", e.message); process.exitCode = 1; }
+    setTimeout(() => {
+        try {
+            assert.strictEqual(libraryCalls.length, 2,
+                "fresh attempt after abort (no sticky failure)");
+            assert.ok(byId.libraryList.innerHTML.includes("db1.pdf"),
+                "documents render after the loading + toggle sequence");
+            console.log("PASS toggle works during library load; no double-toggle");
+        } catch (e) { console.error("FAIL plus-toggle-while-loading:", e.message); process.exitCode = 1; }
+    }, 20);
+}
+
+setTimeout(() => console.log("FRONTEND HARNESS DONE"), 450);

@@ -125,6 +125,7 @@ def build_rag_prompt(
     results,
     max_chars_per_source=None,
     history=None,
+    attachments_text=None,
 ):
     """
     Build the prompt that will eventually be sent
@@ -154,6 +155,14 @@ def build_rag_prompt(
         if lines:
             history_block = "CONVERSATION HISTORY:\\n" + "\\n".join(lines) + "\\n\\n"
 
+    attachments_block = ""
+    if attachments_text and str(attachments_text).strip():
+        attachments_block = (
+            "\nATTACHED MATERIAL EXCERPTS (files the student added):\n"
+            + str(attachments_text).strip()
+            + "\n\n"
+        )
+
     prompt = f"""
 You are a helpful university study assistant. Answer the student's actual question directly and accurately. Use the retrieved study materials as supporting context, not as a replacement for an answer. Explain concepts in clear, natural language. For problem-solving questions, show the method and steps. For algorithms, include pseudocode and complexity when relevant. For numerical problems, show calculations and the final result. For comparison questions, explain the differences clearly. Structure longer answers with headings and examples. Cite only sources actually used. If the sources are insufficient, answer from appropriate general knowledge without mentioning retrieval or limitations, and provide a clear, helpful explanation. Never return only filenames, citations, search results, or raw document excerpts unless the student explicitly requests them.
 
@@ -164,10 +173,11 @@ Additional rules:
 4. Use headings, bullet points, numbered lists, examples, tables, or steps when useful.
 5. Do not mention internal retrieval, embeddings, pgvector, or RAG to the student.
 6. When you rely on a retrieved passage, cite it as [Source N] where N matches the SOURCE number below.
+7. When ATTACHED MATERIAL EXCERPTS are present below, treat them as material the student knowingly provided: prefer them over unrelated retrieved passages, and summarise or quote them only as needed to answer.
 
 {history_block}STUDENT QUESTION:
 {question}
-
+{attachments_block}
 RETRIEVED VTU KNOWLEDGE:
 {context}
 
@@ -219,6 +229,7 @@ def prepare_rag_request(
     limit=5,
     max_chars_per_source=None,
     history=None,
+    attachments_text=None,
 ):
     """
     Retrieve relevant knowledge and prepare the
@@ -242,6 +253,7 @@ def prepare_rag_request(
         results=results,
         max_chars_per_source=max_chars_per_source,
         history=history,
+        attachments_text=attachments_text,
     )
 
     return {

@@ -320,34 +320,55 @@ def search_fts(
     if filters:
         where_clause = "AND " + " AND ".join(filters)
 
-    parameters.append(limit)
+    # Rank only a bounded candidate pool, not every matching chunk:
+    # a broad OR tsquery (e.g. "osi ... layers ... model") can match
+    # over a thousand chunks, and ts_rank_cd + to_tsvector over all of
+    # them dominated retrieval (~0.5s per message measured). The GIN
+    # index narrows candidates cheaply, ranking stays Postgres-side
+    # over the pool, and downstream coverage reranking rebalances the
+    # final order.
+    candidate_limit = min(max(limit * 6, 30), 150)
+    parameters.append(candidate_limit)
 
     sql = f"""
+        WITH candidates AS (
+            SELECT
+                kc.id,
+                kc.document_id,
+                kc.subject_code,
+                kc.module_number,
+                kc.page_number,
+                kc.chunk_number,
+                kc.content,
+                d.original_filename AS filename,
+                d.title AS doc_title
+            FROM knowledge_chunks kc
+            JOIN knowledge_documents d ON d.id = kc.document_id
+            WHERE to_tsvector('english', kc.content)
+                  @@ to_tsquery('english', %s)
+            {where_clause}
+            LIMIT %s
+        )
         SELECT
-            kc.id,
-            kc.document_id,
-            kc.subject_code,
-            kc.module_number,
-            kc.page_number,
-            kc.chunk_number,
-            kc.content,
+            candidates.id,
+            candidates.document_id,
+            candidates.subject_code,
+            candidates.module_number,
+            candidates.page_number,
+            candidates.chunk_number,
+            candidates.content,
             ts_rank_cd(
-                to_tsvector('english', kc.content),
+                to_tsvector('english', candidates.content),
                 to_tsquery('english', %s)
             ) AS similarity,
-            d.original_filename AS filename,
-            d.title AS doc_title
-        FROM knowledge_chunks kc
-        JOIN knowledge_documents d ON d.id = kc.document_id
-        WHERE to_tsvector('english', kc.content)
-              @@ to_tsquery('english', %s)
-        {where_clause}
+            candidates.filename,
+            candidates.doc_title
+        FROM candidates
         ORDER BY similarity DESC
         LIMIT %s
     """
 
-    # The tsquery value is needed twice (rank + match).
-    final_parameters = [tsquery, tsquery] + parameters[1:]
+    final_parameters = parameters + [tsquery, limit]
 
     # Shared thread-local connection: no per-query connect cost and a
     # statement timeout so pooler saturation fails fast, not silent-hang.

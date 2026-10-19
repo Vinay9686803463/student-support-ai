@@ -399,12 +399,16 @@ def generate_answer(message, context=None):
             "For example: 'Explain DBMS normalization'."
         )
 
-    # Tier 1: OpenAI (only when a real key is configured).
-    # Any failure falls through to the offline engine below.
+    # Tier 1: OpenAI — only when OpenAI is the *configured* provider
+    # (AI_PROVIDER=openai) and a real key is set. When Gemini is the
+    # configured provider, falling into a 45s OpenAI attempt first
+    # wasted up to a minute on the fallback path before the offline
+    # engine answered. Any failure falls through to the offline engine.
     try:
+        from utils.rag_ai import configured_provider as _configured_provider
         from utils import openai_provider as _openai
 
-        if _openai.openai_available():
+        if _configured_provider() == "openai" and _openai.openai_available():
             try:
                 openai_reply = _openai.generate_answer(
                     _build_grounded_prompt(text, context),

@@ -818,6 +818,23 @@ def _ensure_writable_instance_path(app):
     app.instance_path = writable
 
 
+# Core tables init_database expects a complete database to already
+# have. A missing subset triggers ``create_all`` (additive-only); a
+# complete database skips the whole reflect/creation pass.
+CORE_TABLES = (
+    "users",
+    "subjects",
+    "notes",
+    "questions",
+    "resources",
+    "conversations",
+    "messages",
+    "knowledge_documents",
+    "knowledge_chunks",
+    "knowledge_processing_logs",
+)
+
+
 def init_database(app):
     # Read the URL fresh: the process environment on Vercel (and in
     # tests) may differ from whatever was present at import time.
@@ -841,7 +858,20 @@ def init_database(app):
 
     try:
         with app.app_context():
-            db.create_all()
+            # ``create_all`` reflects and probes per table (a dozen+
+            # round trips on a hosted database) and ran on EVERY boot.
+            # One cheap table-name probe is enough for the common
+            # case: a complete existing database skips creation
+            # entirely; anything missing is created additively.
+            missing_tables = set(CORE_TABLES) - set(
+                inspect(db.engine).get_table_names()
+            )
+            if missing_tables:
+                print(
+                    "  + creating missing tables: "
+                    + ", ".join(sorted(missing_tables))
+                )
+                db.create_all()
             _migrate_legacy_schema()
     except Exception as error:
         # The database may be temporarily unreachable (network/VPN).

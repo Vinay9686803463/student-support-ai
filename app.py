@@ -1,5 +1,6 @@
 import os
 import re
+import threading
 from functools import wraps
 from pathlib import Path
 
@@ -58,13 +59,61 @@ app.secret_key = os.getenv(
 
 init_database(app)
 
+# Boot-time content seeding used to run synchronously on EVERY boot —
+# dozens of remote round trips (measured: multi-second cold import, the
+# "stuck on first load" symptom behind worker/serverless cold starts).
+# Brand-new (empty) databases still seed synchronously right below, so
+# first-run behavior is unchanged; an existing database instead verifies
+# its content in a background thread while requests are already served.
 with app.app_context():
-    ensure_study_content()
-    # BCSL456D supplement (see utils/bootstrap_latex.py): registers the
-    # LATEX manual until its entries can be folded into
-    # utils/bootstrap.py (currently file-locked). Same SELECT-only +
-    # INSERT-missing contract; never touches other subjects.
-    ensure_latex_materials(db)
+    try:
+        _existing_subjects = (
+            db.session.execute(text("SELECT COUNT(*) FROM subjects")).scalar()
+            or 0
+        )
+    except Exception:
+        _existing_subjects = None
+
+    if _existing_subjects == 0:
+        # Brand-new database: first-run seed runs synchronously (as
+        # always) so the very first requests have content available.
+        ensure_study_content()
+        ensure_latex_materials(db)
+        # (ensure_latex_materials registers the BCSL456D supplement:
+        # see utils/bootstrap_latex.py — same SELECT-only +
+        # INSERT-missing contract; never touches other subjects.)
+    elif _existing_subjects is not None:
+        # Existing database (or a transient count failure): verify in
+        # the background. SELECT-first + INSERT-missing → idempotent and
+        # safe under concurrent workers.
+        if (os.getenv("DATABASE_URL") or "").split(
+                ":", 1)[0].lower() != "sqlite":
+
+            def _warm_background():
+                with app.app_context():
+                    try:
+                        ensure_study_content()
+                    except Exception as error:
+                        print(f"  ! study content verify skipped: {error}")
+                    try:
+                        ensure_latex_materials(db)
+                    except Exception as error:
+                        print(f"  ! latex materials verify skipped: {error}")
+                    try:
+                        from utils import vector_search as _vector_search
+
+                        if _vector_search.vector_available():
+                            _vector_search.get_model()
+                    except Exception:
+                        pass
+
+            _warmup_thread = threading.Thread(
+                target=_warm_background, name="app-warmup", daemon=True
+            )
+            _warmup_thread.start()
+    # On a count failure (None) nothing runs here: init_database below
+    # and every retrieval path handle an unreachable database already;
+    # the next process boot retries.
 
 
 def provider_diagnostics():
@@ -873,6 +922,10 @@ def api_chat():
         except (TypeError, ValueError):
             rag_module = None
 
+        attachment_error, attachments_text = _resolve_chat_attachments(data)
+        if attachment_error:
+            return {"reply": attachment_error}, 400
+
         rag_result = answer_with_rag(
             question=message,
             subject_code=rag_subject,
@@ -883,6 +936,7 @@ def api_chat():
             recent_suggestions=data.get("recent_suggestions")
             or data.get("displayed_suggestions"),
             semester=user.get("current_semester"),
+            attachments_text=attachments_text or None,
         )
 
         answer = rag_result.get("answer", "")
@@ -1014,6 +1068,308 @@ def api_chat():
 
 
 # =========================================================
+# CHAT ATTACHMENTS + LIBRARY PICKER ("+" menu)
+# =========================================================
+#
+# Stateless design (Vercel-safe): uploaded files are NEVER stored.
+# Extraction happens inside one request; the returned excerpt text is
+# echoed by the browser in the next /api/chat (+ /stream) call, where
+# it is re-validated and capped again before reaching the prompt.
+# Original filenames stay display-only: they never touch the filesystem.
+
+_CHAT_ATTACHMENT_MAX_BYTES = 10 * 1024 * 1024          # 10 MB per file
+_CHAT_ATTACHMENT_MAX_COUNT = 3
+_CHAT_ATTACHMENT_TEXT_LIMIT = 24_000                    # per file
+_CHAT_LIBRARY_TEXT_LIMIT = 12_000                       # per library doc
+_CHAT_ATTACHMENTS_TOTAL_LIMIT = 72_000                  # all attachments
+
+_CHAT_ATTACHMENT_EXTENSIONS = {
+    ".pdf", ".txt", ".md", ".csv",
+    ".doc", ".docx", ".ppt", ".pptx", ".xlsx",
+}
+
+_CHAT_IMAGE_EXTENSIONS = {
+    ".png", ".jpg", ".jpeg", ".gif", ".webp", ".bmp", ".svg", ".heic",
+}
+
+
+def _sanitize_attachment_name(raw):
+    """Display label only: strip paths, cap length, keep human text."""
+    name = str(raw or "").replace("\\", "/").split("/")[-1].strip()
+    name = name.replace("\x00", "").replace("\r", " ").replace("\n", " ")
+    if len(name) > 120:
+        name = name[:117] + "..."
+    return name or "attachment"
+
+
+def _extract_attachment_text(spool_path, suffix):
+    """Extract plain text from a supported spooled file.
+
+    Returns (text, truncated, unavailable_reason).
+    """
+
+    if suffix == ".pdf":
+        from utils.knowledge_ingest import extract_pdf_pages
+        pages, _warning = extract_pdf_pages(spool_path)
+    elif suffix in (".txt", ".md", ".csv"):
+        try:
+            body = Path(spool_path).read_text(
+                encoding="utf-8", errors="replace"
+            )
+            pages = [(1, body)]
+        except (OSError, ValueError):
+            pages = []
+    else:
+        from utils.knowledge_ingest import extract_document_pages
+        pages, _warning = extract_document_pages(spool_path)
+
+    merged = "\n\n".join(
+        (page_text or "").strip()
+        for _page_number, page_text in (pages or [])
+        if (page_text or "").strip()
+    )
+    if not merged.strip():
+        return (
+            "",
+            False,
+            "No extractable text was found in this file "
+            "(it may be scanned or empty).",
+        )
+
+    if len(merged) > _CHAT_ATTACHMENT_TEXT_LIMIT:
+        return (
+            merged[:_CHAT_ATTACHMENT_TEXT_LIMIT] + "\n\n[truncated]",
+            True,
+            None,
+        )
+    return merged, False, None
+
+
+def _resolve_chat_attachments(data):
+    """Validate the client-sent attachments array.
+
+    Returns (error_message, attachments_text). attachments_text is the
+    combined excerpt block for the prompt, or "" when nothing valid
+    remains. For 'library' attachments the text is pulled fresh from
+    the knowledge base (never trusted from the client payload).
+    """
+
+    raw = data.get("attachments")
+    if not isinstance(raw, list):
+        return None, ""
+
+    cleaned = []
+    for item in raw[:_CHAT_ATTACHMENT_MAX_COUNT]:
+        if not isinstance(item, dict):
+            continue
+        kind = (item.get("type") or "").strip().lower()
+        name = _sanitize_attachment_name(item.get("name"))
+        if kind == "file":
+            text = item.get("text")
+            if not isinstance(text, str):
+                continue
+            text = text[:_CHAT_ATTACHMENT_TEXT_LIMIT]
+            if not text.strip():
+                continue
+            cleaned.append({"name": name, "text": text})
+        elif kind == "library":
+            try:
+                document_id = int(item.get("document_id"))
+            except (TypeError, ValueError):
+                continue
+            text = _library_document_text(document_id)
+            if not text:
+                continue
+            cleaned.append({"name": name, "text": text})
+
+        if len(cleaned) >= _CHAT_ATTACHMENT_MAX_COUNT:
+            break
+
+    if not cleaned:
+        return None, ""
+
+    parts = []
+    used = 0
+    for att in cleaned:
+        if used >= _CHAT_ATTACHMENTS_TOTAL_LIMIT:
+            break
+        budget = _CHAT_ATTACHMENTS_TOTAL_LIMIT - used
+        text = att["text"][:budget]
+        used += len(text)
+        parts.append(f"--- {att['name']} ---\n{text}")
+
+    return None, "\n\n".join(parts)
+
+
+def _library_document_text(document_id):
+    """Fetch the opening chunks of a knowledge-base document.
+
+    Returns "" (not None) when the id is unknown — the caller then
+    quietly drops the attachment instead of failing the chat request.
+    """
+
+    try:
+        result = db.session.execute(
+            text("""
+                SELECT chunk.content
+                FROM knowledge_chunks chunk
+                JOIN knowledge_documents doc
+                    ON doc.id = chunk.document_id
+                WHERE doc.id = :doc_id
+                ORDER BY chunk.id ASC
+            """),
+            {"doc_id": document_id},
+        ).mappings().all()
+    except Exception as error:
+        db.session.rollback()
+        print("LIBRARY ATTACHMENT QUERY ERROR:", error)
+        return ""
+
+    merged = "\n".join((row["content"] or "").strip() for row in result)
+    merged = re.sub(r"\n{3,}", "\n\n", merged).strip()
+    if len(merged) > _CHAT_LIBRARY_TEXT_LIMIT:
+        return merged[:_CHAT_LIBRARY_TEXT_LIMIT] + "\n\n[truncated]"
+    return merged
+
+
+@app.route("/api/chat/attachments", methods=["POST"])
+@login_required
+def api_chat_attachments():
+
+    uploaded = request.files.get("file")
+    if uploaded is None or not uploaded.filename:
+        return {"ok": False, "error": "No file was received."}, 400
+
+    display_name = _sanitize_attachment_name(uploaded.filename)
+    suffix = Path(display_name).suffix.lower()
+
+    if suffix in _CHAT_IMAGE_EXTENSIONS:
+        return {
+            "ok": False,
+            "code": "unsupported_type",
+            "error": (
+                "The configured AI providers answer with text only, so "
+                "image content cannot be analysed yet. Please attach a "
+                "PDF, Word, PowerPoint, Excel or text file instead."
+            ),
+        }, 415
+
+    if suffix not in _CHAT_ATTACHMENT_EXTENSIONS:
+        return {
+            "ok": False,
+            "code": "unsupported_type",
+            "error": (
+                "Only PDF, Word, PowerPoint, Excel and text files are "
+                "supported for chat attachments."
+            ),
+        }, 400
+
+    header = request.headers.get("Content-Length", "")
+    try:
+        declared = int(header) if header else None
+    except ValueError:
+        declared = None
+    if declared and declared > _CHAT_ATTACHMENT_MAX_BYTES + 64 * 1024:
+        return {
+            "ok": False,
+            "code": "too_large",
+            "error": "That file is larger than the 10 MB limit.",
+        }, 413
+
+    body = uploaded.read(_CHAT_ATTACHMENT_MAX_BYTES + 1024)
+    if len(body) > _CHAT_ATTACHMENT_MAX_BYTES:
+        return {
+            "ok": False,
+            "code": "too_large",
+            "error": "That file is larger than the 10 MB limit.",
+        }, 413
+    if not body:
+        return {
+            "ok": False,
+            "code": "empty_file",
+            "error": "That file is empty.",
+        }, 400
+
+    import tempfile
+    import uuid as _uuid
+
+    with tempfile.TemporaryDirectory() as spool_dir:
+        # The spooled path is generated by the server (uuid), never the
+        # client filename; display_name is used for the label only.
+        spool_path = str(
+            Path(spool_dir) / f"{_uuid.uuid4().hex}{suffix}"
+        )
+        with open(spool_path, "wb") as handle:
+            handle.write(body)
+
+        try:
+            text, truncated, unavailable = _extract_attachment_text(
+                spool_path, suffix
+            )
+        except Exception as error:
+            print("ATTACHMENT EXTRACT ERROR:", error)
+            text, truncated, unavailable = "", False, (
+                "This file could not be read automatically."
+            )
+
+    result = {
+        "ok": True,
+        "attachment": {
+            "name": display_name,
+            "size": len(body),
+            "chars": len(text),
+            "truncated": truncated,
+            "text": text,
+        },
+    }
+    if unavailable and not text:
+        result["unavailable"] = unavailable
+    return result
+
+
+@app.route("/api/chat/library", methods=["GET"])
+@login_required
+def api_chat_library():
+
+    try:
+        rows = db.session.execute(
+            text("""
+                SELECT
+                    id,
+                    subject_code,
+                    subject_name,
+                    module_number,
+                    title,
+                    original_filename,
+                    page_count,
+                    status
+                FROM knowledge_documents
+                WHERE status <> 'failed'
+                ORDER BY subject_code, module_number, title
+                LIMIT 200
+            """)
+        ).mappings().all()
+    except Exception as error:
+        db.session.rollback()
+        print("LIBRARY LIST QUERY ERROR:", error)
+        rows = []
+
+    documents = []
+    for row in rows:
+        documents.append({
+            "id": row["id"],
+            "subject_code": row["subject_code"],
+            "subject_name": row["subject_name"],
+            "module_number": row["module_number"],
+            "title": row["title"],
+            "filename": row["original_filename"],
+            "page_count": row["page_count"] or 0,
+        })
+
+    return {"ok": True, "documents": documents}
+
+
+# =========================================================
 # CHAT API - STREAMING (Server-Sent Events)
 # =========================================================
 
@@ -1080,6 +1436,16 @@ def api_chat_stream():
 
     def _generate():
         try:
+            _attachment_error, attachments_text = _resolve_chat_attachments(
+                data
+            )
+            if _attachment_error:
+                yield (
+                    'event: error\ndata: {"error": '
+                    + _json.dumps(_attachment_error)
+                    + "}\n\n"
+                )
+                return
             for item in stream_answer(
                 question=message,
                 subject_code=rag_subject,
@@ -1090,6 +1456,7 @@ def api_chat_stream():
                 recent_suggestions=data.get("recent_suggestions")
                 or data.get("displayed_suggestions"),
                 semester=user.get("current_semester"),
+                attachments_text=attachments_text or None,
             ):
                 yield f"event: {item['event']}\ndata: {_json.dumps(item['data'])}\n\n"
         except GeneratorExit:
@@ -2416,10 +2783,16 @@ def internal_error(error):
 # =========================================================
 
 @app.teardown_appcontext
-def close_retrieval_connection(_error):
+def release_retrieval_connection(_error):
+    # Thread-local retrieval connections are intentionally KEPT across
+    # requests (utils.db_conn): closing one on every request paid a full
+    # reconnect (TLS handshake + auth round trips) per chat message.
+    # The connection is health-checked when reused after an idle period,
+    # and on request errors we roll back so an aborted transaction (e.g.
+    # statement timeout) cannot poison later queries on it.
     try:
-        from utils.db_conn import close_conn
-        close_conn()
+        from utils.db_conn import rollback_conn
+        rollback_conn()
     except Exception:
         pass
 
