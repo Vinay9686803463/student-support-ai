@@ -11,7 +11,12 @@ venv\Scripts\activate
 venv\Scripts\python.exe app.py
 ```
 
-Then open **http://127.0.0.1:5000** in your browser.
+Now open in your browser.
+
+local host : **http://127.0.0.1:5000/login** 
+
+Live website : **https://student-support-vtu.vercel.app/login**
+
 
 ## First-time setup
 
