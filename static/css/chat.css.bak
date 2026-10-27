@@ -1,0 +1,841 @@
+/* Sources are never shown in the chat UI; citation DOM is dropped in
+   JS (see chat.js). No .source-citations styles on purpose.
+*/
+/*
+.source-citations { ... }  (Intentionally empty.)
+*/
+
+/* Chat input focus: subtle theme-neutral indicator, no blue glow.
+
+   The global accessibility rule later in style.css adds a 2px blue
+   -primary outline to every textarea:focus-visible; that outranks the
+   base `.chat-input-box textarea { outline: none }` rule. These rules
+   win by specificity and redirect focus on THIS field only.
+*/
+
+.chat-input-box:focus-within {
+    border-color: var(--primary);
+    box-shadow: var(--focus-ring);
+}
+
+.chat-input-box textarea:focus,
+.chat-input-box textarea:focus-visible,
+.chat-input-box textarea:active {
+    outline: none;
+    box-shadow: none;
+}
+
+/* Dynamic "Suggested follow-up questions" section after each AI answer */
+
+.followup-suggestions {
+    margin: 12px 0 16px 48px;
+}
+
+.followup-label {
+    margin: 0 0 8px;
+    color: var(--muted);
+    font-size: 11px;
+}
+
+.followup-suggestions .suggestions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+
+.followup-suggestions .suggestion-chip {
+    padding: 8px 12px;
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 9px;
+    color: var(--text);
+    font-size: 11px;
+    cursor: pointer;
+    transition: 0.2s;
+    text-align: left;
+}
+
+.followup-suggestions .suggestion-chip:hover {
+    border-color: var(--primary);
+    color: var(--primary);
+    background: var(--surface-hover);
+}
+
+/* Mobile: full-width chips for easy tapping */
+@media (max-width: 650px) {
+    .followup-suggestions {
+        margin-left: 0;
+    }
+    .followup-suggestions .suggestion-chip {
+        width: 100%;
+        text-align: left;
+    }
+}
+
+/* ============================================================
+   REFERENCE REDESIGN LAYER — vtudeveloper.in (chat surface)
+   Chat-specific theme, loaded last so it wins the cascade for
+   message bubbles, input, chips and buttons.
+   ============================================================ */
+
+/* Assistant bubble */
+.ai-message .message-content {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 14px;
+}
+
+/* User bubble */
+.user-message .message-content {
+    background: var(--primary);
+    border-color: transparent;
+    border-radius: 14px;
+    color: #ffffff;
+}
+
+/* Assistant name row tone inside bubbles. */
+.ai-message .message-content > strong {
+    color: var(--primary);
+}
+
+/* Chat content */
+.message-content p,
+.message-content li {
+    color: var(--text);
+}
+
+.message-content pre {
+    background: var(--surface-2);
+    border: 1px solid var(--border);
+}
+
+.message-content code { color: var(--text); }
+
+.message-content th, .message-content td {
+    border-color: var(--border);
+}
+
+.message-content th {
+    background: var(--surface-2);
+    color: var(--text);
+}
+
+.message-content blockquote {
+    background: var(--surface-2);
+    border-left-color: var(--primary);
+    color: var(--text);
+}
+
+/* Starter + follow-up suggestion chips. */
+.suggestions button,
+.followup-suggestions .suggestion-chip {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    color: var(--text);
+    border-radius: 10px;
+}
+
+.suggestions button:hover,
+.followup-suggestions .suggestion-chip:hover {
+    background: var(--surface-hover);
+    border-color: var(--primary);
+    color: var(--primary);
+}
+
+/* Input chrome */
+.chat-input-box {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+}
+
+.chat-input-box textarea { color: var(--text); }
+
+.chat-input-box textarea::placeholder {
+    color: var(--muted);
+}
+
+.send-button {
+    background: var(--primary);
+    border-radius: 50%;
+}
+
+.send-button:disabled {
+    opacity: 0.55;
+    filter: none;
+    box-shadow: none;
+}
+
+.stop-button {
+    background: #ef4444 !important;
+    border-radius: 50%;
+}
+
+/* ============================================================
+   "+" MENU — ChatGPT-style attachment launcher
+   Dark theme follows the reference redesign layer: black cards,
+   blue-tinted borders, blue→cyan accents, rounded corners.
+   ============================================================ */
+
+.chat-input-box {
+    position: relative;
+    z-index: 1;
+}
+
+.plus-button {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 34px;
+    height: 34px;
+    flex: 0 0 34px;
+    padding: 0;
+    margin: 0;
+    align-self: center;
+    border: 1px solid var(--border);
+    border-radius: 50%;
+    background: rgba(255, 255, 255, 0.05);
+    color: rgba(255, 255, 255, 0.75);
+    cursor: pointer;
+    transition: background 0.2s, border-color 0.2s, color 0.2s,
+        transform 0.2s;
+}
+
+.plus-button svg {
+    width: 18px;
+    height: 18px;
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 2;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+}
+
+.plus-button:hover,
+.plus-button.open {
+    background: rgba(59, 130, 246, 0.15);
+    border-color: rgba(59, 130, 246, 0.45);
+    color: #93c5fd;
+    transform: rotate(45deg);
+}
+
+.plus-button:focus-visible {
+    outline: 2px solid var(--primary, #3b82f6);
+    outline-offset: 2px;
+}
+
+/* Open state: the rotated "+" glyph is the ✕ toggle for the menu. On
+   pointer devices its hover fills red with a white ✕ (~200ms fade); on
+   touch devices the neutral open-state styling stays. */
+@media (hover: hover) {
+    .plus-button.open:hover {
+        background: #ef4444;
+        border-color: #ef4444;
+        color: #ffffff;
+    }
+}
+
+/* Floating menu is anchored to the input pill itself so it always
+   opens just above it, regardless of chip-tray / disclaimer heights. */
+.chat-input-area {
+    position: relative;
+}
+
+.chat-input-box {
+    position: relative;
+    z-index: 1;
+}
+
+.plus-menu,
+.plus-toast {
+    position: absolute;
+    bottom: calc(100% + 8px);
+    left: 0;
+    z-index: 80;
+}
+
+/* A closed menu must actually close. Without this guard the author
+   `display: flex` rule below outranks the user-agent default for
+   [hidden], so closePlusMenu()'s `menu.hidden = true` has no visual
+   effect — the ✕ toggle then appears to do nothing. */
+.plus-menu[hidden] {
+    display: none;
+}
+
+.plus-menu {
+    min-width: 285px;
+    max-width: calc(100vw - 24px);
+    padding: 6px;
+    background: #0a0a12;
+    border: 1px solid rgba(59, 130, 246, 0.25);
+    border-radius: 14px;
+    box-shadow:
+        0 18px 42px rgba(0, 0, 0, 0.55),
+        0 0 0 1px rgba(255, 255, 255, 0.03) inset;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+.plus-menu-item {
+    display: flex;
+    align-items: center;
+    gap: 11px;
+    width: 100%;
+    padding: 9px 10px;
+    border: 0;
+    border-radius: 10px;
+    background: transparent;
+    color: rgba(255, 255, 255, 0.85);
+    font-size: 13px;
+    text-align: left;
+    cursor: pointer;
+    transition: background 0.15s;
+}
+
+.plus-menu-item:hover,
+.plus-menu-item:focus {
+    background: rgba(59, 130, 246, 0.12);
+    color: #ffffff;
+    outline: none;
+}
+
+.plus-menu-icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 30px;
+    height: 30px;
+    flex: 0 0 30px;
+    border-radius: 9px;
+    font-size: 15px;
+    background: linear-gradient(135deg, rgba(124, 58, 237, 0.25), rgba(59, 130, 246, 0.25));
+    border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.plus-menu-text {
+    display: flex;
+    flex-direction: column;
+    gap: 1px;
+}
+
+.plus-menu-text small {
+    color: rgba(255, 255, 255, 0.4);
+    font-size: 11px;
+}
+
+/* Attachment chips above the input box. */
+.chip-tray {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-bottom: 8px;
+}
+
+.attachment-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    max-width: 100%;
+    padding: 7px 10px;
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 10px;
+    color: rgba(255, 255, 255, 0.85);
+    font-size: 12px;
+}
+
+.attachment-chip .chip-icon {
+    font-size: 14px;
+}
+
+.attachment-chip .chip-name {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    max-width: 220px;
+}
+
+.attachment-chip .chip-size {
+    color: rgba(255, 255, 255, 0.4);
+    font-size: 11px;
+}
+
+.attachment-chip.is-busy {
+    border-color: rgba(59, 130, 246, 0.45);
+}
+
+.attachment-chip.is-failed {
+    border-color: rgba(239, 68, 68, 0.5);
+}
+
+.attachment-chip .chip-remove {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 18px;
+    height: 18px;
+    padding: 0;
+    border: 0;
+    border-radius: 50%;
+    background: rgba(255, 255, 255, 0.08);
+    color: rgba(255, 255, 255, 0.6);
+    font-size: 11px;
+    cursor: pointer;
+    transition: background 0.15s, color 0.15s;
+}
+
+.attachment-chip .chip-remove:hover {
+    background: rgba(239, 68, 68, 0.45);
+    color: #ffffff;
+}
+
+/* Attachments reflected on the user's message bubble. */
+.message-attachments {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin-top: 8px;
+}
+
+.message-attachments .sent-attachment {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 5px 9px;
+    background: rgba(0, 0, 0, 0.22);
+    border: 1px solid rgba(255, 255, 255, 0.14);
+    border-radius: 8px;
+    font-size: 11px;
+    color: rgba(255, 255, 255, 0.85);
+}
+
+/* Library modal. */
+.library-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 120;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 20px;
+    background: rgba(0, 0, 0, 0.65);
+    backdrop-filter: blur(3px);
+}
+
+/* The `hidden` attribute must always hide this dialog. Without this
+   guard the author `display: flex` rule above outranks the stylesheet
+   default for [hidden], leaving closeLibrary()'s overlay.hidden = true
+   visually ineffective — the X button then appears to do nothing. */
+.library-overlay[hidden] {
+    display: none;
+}
+
+.library-modal {
+    display: flex;
+    flex-direction: column;
+    width: min(560px, 100%);
+    max-height: min(72vh, 640px);
+    background: #0a0a12;
+    border: 1px solid rgba(59, 130, 246, 0.25);
+    border-radius: 16px;
+    box-shadow: 0 24px 60px rgba(0, 0, 0, 0.6);
+    overflow: hidden;
+}
+
+.library-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 14px 16px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.07);
+    color: #ffffff;
+}
+
+/* Compact square close button: muted X on a subtle dark base; on
+   desktop hover it fills red with a white X (color and background both
+   transition over ~180ms). No tooltip text — the accessible name is
+   the aria-label only. */
+.library-close {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 30px;
+    height: 30px;
+    padding: 0;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 8px;
+    background: rgba(255, 255, 255, 0.05);
+    color: rgba(255, 255, 255, 0.7);
+    font-size: 13px;
+    line-height: 1;
+    cursor: pointer;
+    transition: background 0.18s, color 0.18s, border-color 0.18s;
+}
+
+.library-close:focus-visible {
+    outline: 2px solid var(--primary, #3b82f6);
+    outline-offset: 2px;
+}
+
+/* Hover is a desktop pointer interaction; touch devices (no hover)
+   keep the neutral button and tap behavior unchanged. */
+@media (hover: hover) {
+    .library-close:hover {
+        background: #ef4444;
+        border-color: #ef4444;
+        color: #ffffff;
+    }
+}
+
+.library-search {
+    padding: 12px 16px 4px;
+}
+
+.library-search input {
+    width: 100%;
+    padding: 9px 12px;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 10px;
+    background: rgba(255, 255, 255, 0.04);
+    color: #ffffff;
+    font-size: 13px;
+}
+
+.library-search input::placeholder {
+    color: rgba(255, 255, 255, 0.3);
+}
+
+.library-list {
+    flex: 1;
+    overflow-y: auto;
+    padding: 10px 12px 14px;
+    display: flex;
+    flex-direction: column;
+    gap: 7px;
+}
+
+.library-item {
+    display: flex;
+    align-items: center;
+    gap: 11px;
+    width: 100%;
+    padding: 10px 12px;
+    border: 1px solid rgba(255, 255, 255, 0.07);
+    border-radius: 11px;
+    background: rgba(255, 255, 255, 0.03);
+    color: rgba(255, 255, 255, 0.85);
+    text-align: left;
+    font-size: 13px;
+    cursor: pointer;
+    transition: border-color 0.15s, background 0.15s;
+}
+
+.library-item:hover,
+.library-item:focus {
+    border-color: rgba(59, 130, 246, 0.45);
+    background: rgba(59, 130, 246, 0.1);
+    outline: none;
+}
+
+.library-item .lib-badge {
+    flex: 0 0 auto;
+    padding: 3px 8px;
+    border-radius: 7px;
+    background: rgba(124, 58, 237, 0.22);
+    border: 1px solid rgba(124, 58, 237, 0.35);
+    color: #c4b5fd;
+    font-size: 11px;
+    font-weight: 600;
+}
+
+.library-item .lib-text {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    min-width: 0;
+}
+
+.library-item .lib-title {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.library-item .lib-meta {
+    color: rgba(255, 255, 255, 0.4);
+    font-size: 11px;
+}
+
+.library-empty {
+    padding: 22px 10px;
+    color: rgba(255, 255, 255, 0.4);
+    font-size: 12px;
+    text-align: center;
+}
+
+/* Loading state: spinner + "Loading library…". */
+.library-loading {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    padding: 22px 10px;
+    color: rgba(255, 255, 255, 0.55);
+    font-size: 12px;
+}
+
+.library-spinner {
+    width: 14px;
+    height: 14px;
+    flex: 0 0 14px;
+    border-radius: 50%;
+    border: 2px solid rgba(255, 255, 255, 0.15);
+    border-top-color: rgba(59, 130, 246, 0.85);
+    animation: library-spin 0.9s linear infinite;
+}
+
+@keyframes library-spin {
+    to { transform: rotate(360deg); }
+}
+
+/* Error state: message + retry button (close/Escape always work). */
+.library-retry-wrap {
+    display: flex;
+    justify-content: center;
+    padding: 2px 0 14px;
+}
+
+.library-retry-btn {
+    padding: 7px 14px;
+    border: 1px solid rgba(59, 130, 246, 0.45);
+    border-radius: 9px;
+    background: rgba(59, 130, 246, 0.12);
+    color: #93c5fd;
+    font-size: 12px;
+    cursor: pointer;
+    transition: background 0.18s, color 0.18s;
+}
+
+.library-retry-btn:hover {
+    background: rgba(59, 130, 246, 0.2);
+    color: #ffffff;
+}
+
+/* Status toast for unconfigured menu options. */
+.plus-toast {
+    max-width: 340px;
+    padding: 10px 14px;
+    background: #0a0a12;
+    border: 1px solid rgba(59, 130, 246, 0.3);
+    border-radius: 12px;
+    box-shadow: 0 16px 38px rgba(0, 0, 0, 0.55);
+    color: rgba(255, 255, 255, 0.85);
+    font-size: 12px;
+    line-height: 1.5;
+}
+
+/* Mobile: menu hugs the left edge and stays on-screen. */
+@media (max-width: 650px) {
+    .plus-menu {
+        left: -8px;
+        min-width: 240px;
+    }
+    .plus-toast {
+        left: -8px;
+    }
+    .plus-button {
+        width: 30px;
+        height: 30px;
+        flex-basis: 30px;
+    }
+    .attachment-chip .chip-name {
+        max-width: 150px;
+    }
+}
+/* ============================================================
+   ASSISTANT ANSWER TYPOGRAPHY — ChatGPT-style rendering
+   The renderer (chat.js) emits semantic HTML; these rules give
+   headings, lists, tables, code, quotes, rules and math their
+   spacing. Scoped to assistant bubbles so user messages and the
+   rest of the theme are untouched.
+   ============================================================ */
+
+/* Inline emphasis must stay inline: the legacy core rule turned every
+   <strong> into a block "heading" (display:block + margins), which
+   chopped bold words out of mid-paragraph flow. */
+.ai-message .message-content strong {
+    display: inline;
+    margin: 0;
+    font-size: inherit;
+    color: inherit;
+    font-weight: 700;
+}
+
+.ai-message .message-content p {
+    margin: 0 0 10px;
+    font-size: 13.5px;
+    line-height: 1.65;
+}
+
+.ai-message .message-content > p:last-child {
+    margin-bottom: 0;
+}
+
+/* Headings: compact hierarchy that reads inside a bubble. */
+.ai-message .message-content h1,
+.ai-message .message-content h2,
+.ai-message .message-content h3,
+.ai-message .message-content h4,
+.ai-message .message-content h5,
+.ai-message .message-content h6 {
+    margin: 14px 0 8px;
+    color: #e8eeff;
+    line-height: 1.35;
+}
+
+.ai-message .message-content h1 { font-size: 18px; }
+.ai-message .message-content h2 { font-size: 16px; }
+.ai-message .message-content h3 { font-size: 14.5px; }
+.ai-message .message-content h4 { font-size: 13.5px; }
+.ai-message .message-content > h1:first-child,
+.ai-message .message-content > h2:first-child,
+.ai-message .message-content > h3:first-child {
+    margin-top: 2px;
+}
+
+/* Lists and numbered steps. */
+.ai-message .message-content ul,
+.ai-message .message-content ol {
+    margin: 6px 0 10px;
+    padding-left: 22px;
+}
+
+.ai-message .message-content li {
+    margin: 4px 0;
+    line-height: 1.6;
+}
+
+.ai-message .message-content li::marker {
+    color: #93c5fd;
+}
+
+/* Nested lists inside an item keep tight vertical rhythm. */
+.ai-message .message-content li > ul,
+.ai-message .message-content li > ol {
+    margin: 4px 0 2px;
+}
+
+/* Fenced code blocks — dark, padded, horizontally scrollable. */
+.ai-message .message-content pre {
+    margin: 10px 0;
+    padding: 12px 14px;
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 10px;
+    background: #000000;
+    overflow-x: auto;
+}
+
+.ai-message .message-content pre,
+.ai-message .message-content code {
+    font-family: "Consolas", "SFMono-Regular", ui-monospace, Menlo,
+        monospace;
+    font-size: 12.5px;
+    line-height: 1.55;
+}
+
+/* Inline code reads as a small chip; code-block text stays plain. */
+.ai-message .message-content :not(pre) > code {
+    background: rgba(59, 130, 246, 0.12);
+    border: 1px solid rgba(59, 130, 246, 0.18);
+    border-radius: 5px;
+    padding: 1px 5px;
+    color: #93c5fd;
+}
+
+/* Tables: full-width, aligned cells, horizontally scrollable on small
+   screens instead of overflowing the bubble. */
+.table-wrap {
+    margin: 10px 0;
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 10px;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+}
+
+.table-wrap table {
+    width: 100%;
+    min-width: 420px;
+    border-collapse: collapse;
+}
+
+.table-wrap th,
+.table-wrap td {
+    padding: 8px 12px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+    text-align: left;
+    font-size: 12.5px;
+    line-height: 1.5;
+    color: rgba(255, 255, 255, 0.85);
+    vertical-align: top;
+}
+
+.table-wrap th {
+    background: rgba(59, 130, 246, 0.10);
+    color: #93c5fd;
+    font-weight: 600;
+    white-space: nowrap;
+}
+
+.table-wrap tr:last-child td {
+    border-bottom: 0;
+}
+
+/* Blockquotes and separators. */
+.ai-message .message-content blockquote {
+    margin: 10px 0;
+    padding: 6px 12px;
+    border-left: 3px solid var(--primary, #3b82f6);
+    border-radius: 0 8px 8px 0;
+    background: rgba(59, 130, 246, 0.06);
+}
+
+.ai-message .message-content hr {
+    border: 0;
+    border-top: 1px solid rgba(255, 255, 255, 0.10);
+    margin: 12px 0;
+}
+
+/* Math (LaTeX-lite): formulas flow like text; display math centers;
+   fractions stack; sub/superscripts keep readable ratios. Symbols
+   are plain Unicode — nothing executes from math content. */
+.message-content div.math-display {
+    display: block;
+    margin: 10px 0;
+    padding: 2px 8px;
+    font-size: 15px;
+    text-align: center;
+}
+
+.message-content .math-frac {
+    display: inline-flex;
+    flex-direction: column;
+    align-items: center;
+    vertical-align: -0.45em;
+    margin: 0 3px;
+    line-height: 1.25;
+}
+
+.message-content .math-frac span {
+    display: block;
+    padding: 0 4px;
+}
+
+.message-content .math-frac-top {
+    border-bottom: 1px solid rgba(255, 255, 255, 0.55);
+}
+
+.message-content sup,
+.message-content sub {
+    font-size: 0.78em;
+}

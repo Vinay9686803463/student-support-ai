@@ -14,8 +14,8 @@
 */
 
 .chat-input-box:focus-within {
-    border-color: rgba(59, 130, 246, 0.45);
-    box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.15);
+    border-color: var(--accent);
+    box-shadow: var(--focus-ring);
 }
 
 .chat-input-box textarea:focus,
@@ -56,9 +56,9 @@
 }
 
 .followup-suggestions .suggestion-chip:hover {
-    border-color: rgba(59, 130, 246, 0.45);
-    color: var(--primary-light);
-    background: rgba(59, 130, 246, 0.10);
+    border-color: var(--accent);
+    color: var(--accent);
+    background: var(--surface-hover);
 }
 
 /* Mobile: full-width chips for easy tapping */
@@ -78,91 +78,87 @@
    message bubbles, input, chips and buttons.
    ============================================================ */
 
-/* Assistant bubble: layered dark card with blue-tinted border. */
+/* Assistant bubble */
 .ai-message .message-content {
-    background:
-        linear-gradient(180deg, rgba(59, 130, 246, 0.06), rgba(255, 255, 255, 0.015) 44%),
-        #08080d;
-    border: 1px solid rgba(255, 255, 255, 0.07);
+    background: var(--surface);
+    border: 1px solid var(--border);
     border-radius: 14px;
+    color: var(--text);
 }
 
-/* User bubble: the reference blue→cyan button gradient. */
+/* User bubble */
 .user-message .message-content {
-    background: linear-gradient(135deg, #3b82f6, #06b6d4);
+    background: var(--accent);
     border-color: transparent;
     border-radius: 14px;
-    box-shadow: 0 10px 26px rgba(59, 130, 246, 0.35);
+    color: #ffffff;
 }
 
 /* Assistant name row tone inside bubbles. */
 .ai-message .message-content > strong {
-    color: #93c5fd;
+    color: var(--accent);
 }
 
-/* Chat content: keep readable aria of the reference body text. */
+/* Chat content */
 .message-content p,
 .message-content li {
-    color: rgba(255, 255, 255, 0.85);
+    color: var(--text);
 }
 
 .message-content pre {
-    background: #000000;
-    border-color: rgba(255, 255, 255, 0.08);
+    background: var(--surface-2);
+    border: 1px solid var(--border);
 }
 
-.message-content code { color: #93c5fd; }
+.message-content code { color: var(--text); }
 
 .message-content th, .message-content td {
-    border-color: rgba(255, 255, 255, 0.08);
+    border-color: var(--border);
 }
 
 .message-content th {
-    background: rgba(59, 130, 246, 0.10);
-    color: #93c5fd;
+    background: var(--surface-2);
+    color: var(--text);
 }
 
 .message-content blockquote {
-    background: rgba(59, 130, 246, 0.06);
-    border-left-color: var(--primary);
-    color: rgba(255, 255, 255, 0.75);
+    background: var(--surface-2);
+    border-left-color: var(--accent);
+    color: var(--text);
 }
 
 /* Starter + follow-up suggestion chips. */
 .suggestions button,
 .followup-suggestions .suggestion-chip {
-    background: rgba(255, 255, 255, 0.05);
-    border: 1px solid rgba(255, 255, 255, 0.1);
-    color: rgba(255, 255, 255, 0.8);
+    background: var(--surface);
+    border: 1px solid var(--border);
+    color: var(--text);
     border-radius: 10px;
 }
 
 .suggestions button:hover,
 .followup-suggestions .suggestion-chip:hover {
-    background: rgba(59, 130, 246, 0.10);
-    border-color: rgba(59, 130, 246, 0.45);
-    color: var(--primary-light);
+    background: var(--surface-hover);
+    border-color: var(--accent);
+    color: var(--accent);
 }
 
-/* Input chrome = reference search pill. */
+/* Input chrome */
 .chat-input-box {
-    background: rgba(255, 255, 255, 0.05);
-    border: 1px solid rgba(255, 255, 255, 0.1);
+    background: var(--surface);
+    border: 1px solid var(--border);
     border-radius: 12px;
 }
 
-.chat-input-box textarea { color: #ffffff; }
+.chat-input-box textarea { color: var(--text); }
 
 .chat-input-box textarea::placeholder {
-    color: rgba(255, 255, 255, 0.3);
+    color: var(--muted);
 }
 
 .send-button {
-    background: linear-gradient(135deg, #7c3aed 0%, #3b82f6 55%, #06b6d4 100%);
+    background: var(--accent);
     border-radius: 50%;
-    box-shadow:
-        0 4px 14px rgba(59, 130, 246, 0.45),
-        0 0 0 4px rgba(255, 255, 255, 0.06);
 }
 
 .send-button:disabled {
@@ -197,7 +193,7 @@
     padding: 0;
     margin: 0;
     align-self: center;
-    border: 1px solid rgba(255, 255, 255, 0.1);
+    border: 1px solid var(--border);
     border-radius: 50%;
     background: rgba(255, 255, 255, 0.05);
     color: rgba(255, 255, 255, 0.75);
@@ -225,7 +221,7 @@
 }
 
 .plus-button:focus-visible {
-    outline: 2px solid var(--primary, #3b82f6);
+    outline: 2px solid var(--primary, #2563EB);
     outline-offset: 2px;
 }
 
@@ -271,7 +267,7 @@
     min-width: 285px;
     max-width: calc(100vw - 24px);
     padding: 6px;
-    background: #0a0a12;
+    background: #F8FAFC;
     border: 1px solid rgba(59, 130, 246, 0.25);
     border-radius: 14px;
     box-shadow:
@@ -441,7 +437,7 @@
     flex-direction: column;
     width: min(560px, 100%);
     max-height: min(72vh, 640px);
-    background: #0a0a12;
+    background: #F8FAFC;
     border: 1px solid rgba(59, 130, 246, 0.25);
     border-radius: 16px;
     box-shadow: 0 24px 60px rgba(0, 0, 0, 0.6);
@@ -479,7 +475,7 @@
 }
 
 .library-close:focus-visible {
-    outline: 2px solid var(--primary, #3b82f6);
+    outline: 2px solid var(--primary, #2563EB);
     outline-offset: 2px;
 }
 
@@ -631,7 +627,7 @@
 .plus-toast {
     max-width: 340px;
     padding: 10px 14px;
-    background: #0a0a12;
+    background: #F8FAFC;
     border: 1px solid rgba(59, 130, 246, 0.3);
     border-radius: 12px;
     box-shadow: 0 16px 38px rgba(0, 0, 0, 0.55);
@@ -737,7 +733,7 @@
     padding: 12px 14px;
     border: 1px solid rgba(255, 255, 255, 0.08);
     border-radius: 10px;
-    background: #000000;
+    background: #F8FAFC;
     overflow-x: auto;
 }
 
@@ -800,7 +796,7 @@
 .ai-message .message-content blockquote {
     margin: 10px 0;
     padding: 6px 12px;
-    border-left: 3px solid var(--primary, #3b82f6);
+    border-left: 3px solid var(--primary, #2563EB);
     border-radius: 0 8px 8px 0;
     background: rgba(59, 130, 246, 0.06);
 }
