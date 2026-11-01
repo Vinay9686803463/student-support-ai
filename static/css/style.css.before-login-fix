@@ -1,0 +1,830 @@
+/* ============================================================
+   STUDENT SUPPORT AI
+   COMPLETE STYLE.CSS - Clean Light Theme
+   ============================================================ */
+
+@import url("https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap");
+
+
+/* ============================================================
+   GLOBAL VARIABLES
+   ============================================================ */
+
+:root {
+    /* Required Color Palette */
+    --background: #F7F8FA;
+    --surface: #FFFFFF;
+    --text: #1F2937;
+    --muted: #64748B;
+    --accent: #315B78;
+    --border: #E2E8F0;
+
+    /* Backward compatible aliases */
+    --bg: var(--background);
+    --bg2: #F1F3F5;
+    --bg3: #E9EDF1;
+    --card: var(--surface);
+    --surface-2: #F8FAFC;
+    --surface-hover: #F1F5F9;
+    --text-muted: var(--muted);
+    --card-border: var(--border);
+    --input-border: #CBD5E1;
+
+    /* Primary Colors - Navy Blue */
+    --primary: var(--accent);
+    --primary-hover: #284B64;
+    --primary-dark: #24445C;
+    --primary-light: #DCE7EF;
+
+    /* Accent Colors */
+    --accent-color: var(--accent);
+    --violet: var(--muted);
+    --cyan: var(--muted);
+
+    /* Status Colors */
+    --red: #DC2626;
+    --green: #15803D;
+    --success: #15803D;
+    --warning: #B45309;
+    --danger: #DC2626;
+
+    /* No gradients */
+    --primary-gradient: var(--primary);
+    --accent-gradient: var(--primary);
+    --gradient-title: none;
+
+    /* No glows/shadows */
+    --glow-blue: none;
+    --shadow: 0 1px 3px rgba(15, 23, 42, 0.04);
+    --shadow-hover: 0 2px 6px rgba(15, 23, 42, 0.06);
+    --focus-ring: 0 0 0 2px rgba(49, 91, 120, 0.12);
+
+    /* Border Radius */
+    --radius: 10px;
+    --radius-lg: 12px;
+
+    /* Typography */
+    --font: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    --font-head: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+}
+
+
+/* ============================================================
+   RESET
+   ============================================================ */
+
+* {
+    box-sizing: border-box;
+}
+
+html {
+    scroll-behavior: smooth;
+}
+
+body {
+    margin: 0;
+    padding: 0;
+    font-family: var(--font);
+    background: var(--bg);
+    color: var(--text);
+    line-height: 1.6;
+}
+
+a {
+    color: inherit;
+    text-decoration: none;
+}
+
+button,
+input,
+textarea,
+select {
+    font-family: inherit;
+}
+
+
+/* ============================================================
+   MAIN APP
+   ============================================================ */
+
+.app {
+    min-height: 100vh;
+    width: 100%;
+    display: flex;
+}
+
+
+/* ============================================================
+   SIDEBAR
+   ============================================================ */
+
+.sidebar {
+    width: 250px;
+    min-width: 250px;
+    height: 100vh;
+    position: fixed;
+    left: 0;
+    top: 0;
+    background: var(--card);
+    border-right: 1px solid var(--border);
+    padding: 28px 18px;
+    display: flex;
+    flex-direction: column;
+    z-index: 100;
+}
+
+.sidebar-logo {
+    font-size: 18px;
+    font-weight: 700;
+    color: var(--text);
+    margin-bottom: 32px;
+    padding: 0 8px;
+}
+
+.sidebar-logo span {
+    color: var(--primary);
+}
+
+.sidebar-nav {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.sidebar-link {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 10px 12px;
+    border-radius: var(--radius);
+    color: var(--muted);
+    font-size: 14px;
+    font-weight: 500;
+    transition: none;
+}
+
+.sidebar-link svg {
+    width: 20px;
+    height: 20px;
+    flex-shrink: 0;
+}
+
+.sidebar-link:hover {
+    background: var(--surface-hover);
+    color: var(--text);
+}
+
+.sidebar-link.active {
+    background: var(--primary);
+    color: #FFFFFF;
+    font-weight: 600;
+}
+
+.sidebar-footer {
+    padding-top: 16px;
+    border-top: 1px solid var(--border);
+}
+
+
+/* ============================================================
+   MAIN CONTENT
+   ============================================================ */
+
+.main {
+    margin-left: 250px;
+    flex: 1;
+    min-height: 100vh;
+    background: var(--bg);
+}
+
+.topbar {
+    height: 70px;
+    background: var(--card);
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0 32px;
+    position: sticky;
+    top: 0;
+    z-index: 50;
+}
+
+.topbar-left h1 {
+    font-size: 18px;
+    font-weight: 600;
+    color: var(--text);
+    margin: 0;
+}
+
+.topbar-right {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+}
+
+.profile-menu {
+    position: relative;
+}
+
+.profile-button {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    background: transparent;
+    border: none;
+    cursor: pointer;
+    padding: 6px 10px;
+    border-radius: var(--radius);
+}
+
+.profile-button:hover {
+    background: var(--surface-hover);
+}
+
+.profile-avatar {
+    width: 36px;
+    height: 36px;
+    border-radius: 50%;
+    background: var(--primary);
+    color: #FFFFFF;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: 600;
+    font-size: 14px;
+}
+
+.profile-info {
+    text-align: left;
+}
+
+.profile-name {
+    font-size: 14px;
+    font-weight: 500;
+    color: var(--text);
+    line-height: 1.2;
+}
+
+.profile-role {
+    font-size: 12px;
+    color: var(--muted);
+    line-height: 1.2;
+}
+
+.profile-dropdown {
+    position: absolute;
+    right: 0;
+    top: calc(100% + 8px);
+    width: 220px;
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    box-shadow: var(--shadow-hover);
+    display: none;
+    overflow: hidden;
+}
+
+.profile-dropdown.show {
+    display: block;
+}
+
+.profile-dropdown-head {
+    padding: 12px 16px;
+    border-bottom: 1px solid var(--border);
+}
+
+.profile-dropdown-head .profile-name {
+    font-weight: 600;
+}
+
+.profile-dropdown a {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 16px;
+    color: var(--text);
+    font-size: 14px;
+}
+
+.profile-dropdown a:hover {
+    background: var(--surface-hover);
+}
+
+.profile-dropdown a.danger {
+    color: var(--danger);
+}
+
+
+/* ============================================================
+   CONTENT AREA
+   ============================================================ */
+
+.content {
+    padding: 32px;
+    max-width: 1400px;
+}
+
+
+/* ============================================================
+   CARDS
+   ============================================================ */
+
+.card,
+.welcome-card,
+.subject-card,
+.semester-card,
+.note-card,
+.resource-card,
+.question-card {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 24px;
+    box-shadow: none;
+}
+
+.card:hover,
+.subject-card:hover,
+.semester-card:hover,
+.note-card:hover,
+.resource-card:hover {
+    box-shadow: none;
+}
+
+
+/* ============================================================
+   BUTTONS
+   ============================================================ */
+
+.btn,
+.primary-btn,
+.submit-btn,
+.login-btn,
+.signup-btn,
+.chat-send-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    padding: 10px 20px;
+    background: var(--primary);
+    color: #FFFFFF;
+    border: none;
+    border-radius: var(--radius);
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: none;
+}
+
+.btn:hover,
+.primary-btn:hover,
+.submit-btn:hover,
+.login-btn:hover,
+.signup-btn:hover,
+.chat-send-btn:hover {
+    background: var(--primary-hover);
+}
+
+.btn-secondary {
+    background: var(--card);
+    color: var(--text);
+    border: 1px solid var(--border);
+}
+
+.btn-secondary:hover {
+    background: var(--surface-hover);
+}
+
+
+/* ============================================================
+   FORMS
+   ============================================================ */
+
+input[type="text"],
+input[type="email"],
+input[type="password"],
+input[type="number"],
+textarea,
+select {
+    width: 100%;
+    padding: 10px 12px;
+    background: var(--card);
+    border: 1px solid var(--input-border);
+    border-radius: var(--radius);
+    color: var(--text);
+    font-size: 14px;
+    outline: none;
+}
+
+input:focus,
+textarea:focus,
+select:focus {
+    border-color: var(--primary);
+    box-shadow: var(--focus-ring);
+}
+
+label {
+    display: block;
+    margin-bottom: 8px;
+    color: var(--text);
+    font-size: 14px;
+    font-weight: 500;
+}
+
+
+/* ============================================================
+   AUTHENTICATION PAGES
+   ============================================================ */
+
+.auth-page {
+    min-height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 30px;
+    background: var(--bg);
+}
+
+.auth-card {
+    width: 100%;
+    max-width: 420px;
+    padding: 40px;
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    box-shadow: none;
+}
+
+.auth-logo {
+    text-align: center;
+    font-size: 22px;
+    font-weight: 700;
+    color: var(--text);
+    margin-bottom: 32px;
+}
+
+.auth-logo span {
+    color: var(--primary);
+}
+
+.auth-card h1 {
+    margin: 0;
+    text-align: center;
+    color: var(--text);
+    font-size: 26px;
+    font-weight: 700;
+}
+
+.auth-subtitle {
+    text-align: center;
+    color: var(--muted);
+    margin: 8px 0 32px;
+    font-size: 14px;
+}
+
+.form-group {
+    margin-bottom: 20px;
+}
+
+.auth-footer {
+    text-align: center;
+    margin-top: 24px;
+    color: var(--muted);
+    font-size: 14px;
+}
+
+.auth-footer a {
+    color: var(--primary);
+    font-weight: 500;
+}
+
+.auth-footer a:hover {
+    text-decoration: underline;
+}
+
+
+/* ============================================================
+   DASHBOARD
+   ============================================================ */
+
+.welcome-section {
+    margin-bottom: 32px;
+}
+
+.welcome-section h2 {
+    font-size: 24px;
+    font-weight: 700;
+    color: var(--text);
+    margin: 0 0 8px;
+}
+
+.welcome-section p {
+    color: var(--muted);
+    margin: 0;
+}
+
+.quick-actions {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+    gap: 16px;
+    margin-bottom: 32px;
+}
+
+.action-card {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 20px;
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    cursor: pointer;
+    transition: none;
+}
+
+.action-card:hover {
+    border-color: var(--primary);
+}
+
+.action-icon {
+    width: 48px;
+    height: 48px;
+    border-radius: var(--radius);
+    background: var(--primary-light);
+    color: var(--primary);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+}
+
+.action-info h3 {
+    font-size: 16px;
+    font-weight: 600;
+    color: var(--text);
+    margin: 0 0 4px;
+}
+
+.action-info p {
+    font-size: 13px;
+    color: var(--muted);
+    margin: 0;
+}
+
+
+/* ============================================================
+   SUBJECTS
+   ============================================================ */
+
+.semester-section {
+    margin-bottom: 32px;
+}
+
+.semester-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 16px;
+}
+
+.semester-header h2 {
+    font-size: 18px;
+    font-weight: 600;
+    color: var(--text);
+    margin: 0;
+}
+
+.semester-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+    gap: 16px;
+}
+
+.semester-card {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 18px 20px;
+    cursor: pointer;
+}
+
+.semester-card:hover {
+    border-color: var(--primary);
+}
+
+.semester-card h3 {
+    font-size: 15px;
+    font-weight: 600;
+    color: var(--text);
+    margin: 0 0 4px;
+}
+
+.semester-card p {
+    font-size: 13px;
+    color: var(--muted);
+    margin: 0;
+}
+
+.semester-card.current {
+    border: 1px solid var(--primary);
+}
+
+.semester-card.completed {
+    opacity: 0.8;
+}
+
+
+/* ============================================================
+   SETTINGS
+   ============================================================ */
+
+.settings-section {
+    max-width: 800px;
+}
+
+.settings-card {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    margin-bottom: 24px;
+    overflow: hidden;
+}
+
+.settings-header {
+    padding: 20px 24px;
+    border-bottom: 1px solid var(--border);
+}
+
+.settings-header h2 {
+    font-size: 16px;
+    font-weight: 600;
+    color: var(--text);
+    margin: 0;
+}
+
+.settings-header p {
+    font-size: 13px;
+    color: var(--muted);
+    margin: 4px 0 0;
+}
+
+.settings-body {
+    padding: 24px;
+}
+
+.form-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 16px;
+    margin-bottom: 20px;
+}
+
+.logout-button {
+    background: var(--card);
+    color: var(--danger);
+    border: 1px solid var(--border);
+    padding: 10px 16px;
+    border-radius: var(--radius);
+    cursor: pointer;
+    font-size: 14px;
+    font-weight: 500;
+}
+
+.logout-button:hover {
+    background: #FEF2F2;
+    border-color: #FCA5A5;
+}
+
+
+/* ============================================================
+   FLASH MESSAGES
+   ============================================================ */
+
+.flash-container {
+    position: fixed;
+    top: 90px;
+    right: 32px;
+    z-index: 1000;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.flash-message,
+.alert {
+    padding: 12px 16px;
+    border-radius: var(--radius);
+    font-size: 14px;
+    border: 1px solid var(--border);
+    background: var(--card);
+    color: var(--text);
+    box-shadow: var(--shadow);
+}
+
+.flash-message.success,
+.alert.success {
+    background: #F0FDF4;
+    border-color: #BBF7D0;
+    color: var(--green);
+}
+
+.flash-message.error,
+.flash-message.danger,
+.alert.error,
+.alert.danger {
+    background: #FEF2F2;
+    border-color: #FECACA;
+    color: var(--red);
+}
+
+.flash-message.warning,
+.alert.warning {
+    background: #FFFBEB;
+    border-color: #FDE68A;
+    color: var(--warning);
+}
+
+.flash-message.info,
+.alert.info {
+    background: #EFF6FF;
+    border-color: #BFDBFE;
+    color: var(--primary);
+}
+
+
+/* ============================================================
+   RESPONSIVE
+   ============================================================ */
+
+@media (max-width: 968px) {
+    .sidebar {
+        transform: translateX(-100%);
+    }
+    
+    .main {
+        margin-left: 0;
+    }
+    
+    .content {
+        padding: 20px;
+    }
+    
+    .topbar {
+        padding: 0 20px;
+    }
+    
+    .form-row {
+        grid-template-columns: 1fr;
+    }
+}
+
+@media (max-width: 640px) {
+    .quick-actions {
+        grid-template-columns: 1fr;
+    }
+    
+    .semester-grid {
+        grid-template-columns: 1fr;
+    }
+    
+    .auth-card {
+        padding: 28px 24px;
+    }
+}
+
+
+/* ============================================================
+   REMOVE DARK MODE SUPPORT
+   ============================================================ */
+
+/* Force light theme always */
+.dark-mode {
+    --bg: var(--background);
+    --bg2: #F1F3F5;
+    --bg3: #E9EDF1;
+    --card: var(--surface);
+    --surface: var(--surface);
+    --surface-2: #F8FAFC;
+    --surface-hover: #F1F5F9;
+    --text: var(--text);
+    --text-muted: var(--muted);
+    --muted: var(--muted);
+    --border: var(--border);
+    --card-border: var(--border);
+    --input-border: #CBD5E1;
+    --primary: var(--primary);
+    --primary-hover: var(--primary-hover);
+    --primary-dark: var(--primary-dark);
+    --primary-light: var(--primary-light);
+    --accent: var(--accent);
+    background: var(--bg) !important;
+    color: var(--text) !important;
+}
+
+.dark-mode body {
+    background: var(--bg) !important;
+    color: var(--text) !important;
+}
