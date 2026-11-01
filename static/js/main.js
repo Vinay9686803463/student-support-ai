@@ -1,4 +1,4 @@
-/* Student Support AI - shared helpers (flash auto-dismiss, dark-mode boot) */
+/* Student Support AI - shared helpers (flash auto-dismiss) */
 (function () {
     // Auto-dismiss flash messages after 5 seconds
     document.querySelectorAll(".flash-message, .alert").forEach(function (el) {
@@ -9,11 +9,10 @@
         }, 5000);
     });
 
-    // Apply saved dark mode early on every page
+    // Ensure light theme
     try {
-        if (localStorage.getItem("studentSupportDarkMode") === "true") {
-            document.body.classList.add("dark-mode");
-        }
+        document.body.classList.remove("dark-mode");
+        localStorage.setItem("studentSupportDarkMode", "false");
     } catch (e) { /* storage unavailable */ }
 })();
 
