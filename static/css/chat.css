@@ -35,11 +35,18 @@
     overflow-wrap: anywhere;
 }
 
+/* Bold and italic text */
 .ai-message .message-content strong {
+    display: inline;
     font-weight: 700;
     color: var(--text);
 }
 
+.ai-message .message-content em {
+    font-style: italic;
+}
+
+/* Headings */
 .ai-message .message-content h1,
 .ai-message .message-content h2,
 .ai-message .message-content h3,
@@ -66,10 +73,12 @@
     font-size: 16px;
 }
 
+/* Paragraphs */
 .ai-message .message-content p {
     margin: 10px 0;
 }
 
+/* Lists */
 .ai-message .message-content ul,
 .ai-message .message-content ol {
     padding-left: 24px;
@@ -80,6 +89,7 @@
     margin: 5px 0;
 }
 
+/* Code blocks */
 .ai-message .message-content pre {
     max-width: 100%;
     overflow-x: auto;
@@ -92,11 +102,31 @@
     overflow-wrap: anywhere;
 }
 
+/* Blockquotes */
 .ai-message .message-content blockquote {
     border-left: 3px solid var(--primary);
     padding-left: 14px;
     margin: 12px 0;
     color: var(--muted);
+}
+
+/* Mathematical equations */
+.ai-message .message-content div.math-display {
+    display: block;
+    width: 100%;
+    overflow-x: auto;
+    text-align: center;
+    margin: 16px 0;
+    padding: 12px;
+}
+
+.ai-message .message-content .math-display {
+    display: block;
+    overflow-x: auto;
+}
+
+.ai-message .message-content .math-inline {
+    display: inline;
 }
 
 /* =========================================
@@ -114,6 +144,7 @@
     display: none !important;
 }
 
+/* Loading state */
 .library-loading {
     display: flex;
     align-items: center;
@@ -124,6 +155,8 @@
     font-size: 14px;
 }
 
+/* Loading spinner */
+.library-spinner,
 .library-spin {
     width: 20px;
     height: 20px;
@@ -139,6 +172,7 @@
     }
 }
 
+/* Retry button */
 .library-retry-btn {
     padding: 9px 16px;
     border: 1px solid var(--border);
@@ -146,16 +180,19 @@
     background: var(--card);
     color: var(--text);
     cursor: pointer;
-    transition: background-color 0.2s ease, color 0.2s ease,
-                border-color 0.2s ease;
+    transition: background-color 0.18s ease,
+                color 0.18s ease,
+                border-color 0.18s ease;
 }
 
+/* Close button */
 .library-close {
     cursor: pointer;
     border: 1px solid transparent;
     border-radius: 8px;
-    transition: background-color 0.2s ease, color 0.2s ease,
-                border-color 0.2s ease;
+    transition: background-color 0.18s ease,
+                color 0.18s ease,
+                border-color 0.18s ease;
 }
 
 .library-close:focus-visible {
@@ -166,9 +203,9 @@
 /* Desktop hover effects */
 @media (hover: hover) {
     .library-close:hover {
-        background: #dc2626;
+        background: #ef4444;
         color: #ffffff;
-        border-color: #dc2626;
+        border-color: #ef4444;
     }
 
     .library-retry-btn:hover {
@@ -188,34 +225,44 @@
 
 .plus-button {
     cursor: pointer;
-    transition: background-color 0.2s ease,
-                color 0.2s ease,
-                border-color 0.2s ease,
-                transform 0.2s ease;
+    transition: background-color 0.18s ease,
+                color 0.18s ease,
+                border-color 0.18s ease,
+                transform 0.18s ease;
 }
 
 .plus-button svg,
 .plus-button i {
-    transition: color 0.2s ease,
-                fill 0.2s ease,
-                transform 0.2s ease;
+    transition: color 0.18s ease,
+                fill 0.18s ease,
+                transform 0.18s ease;
 }
 
 /* Desktop-only hover effects */
 @media (hover: hover) {
     .plus-button:hover,
     .plus-button[aria-expanded="true"]:hover {
-        background-color: #dc2626;
+        background-color: #ef4444;
         color: #ffffff;
-        border-color: #dc2626;
+        border-color: #ef4444;
+    }
+
+    /* Open menu hover state */
+    .plus-button.open:hover {
+        background-color: #ef4444;
+        color: #ffffff;
+        border-color: #ef4444;
     }
 
     .plus-button:hover svg,
     .plus-button:hover i,
     .plus-button[aria-expanded="true"]:hover svg,
-    .plus-button[aria-expanded="true"]:hover i {
+    .plus-button[aria-expanded="true"]:hover i,
+    .plus-button.open:hover svg,
+    .plus-button.open:hover i {
         color: #ffffff;
         fill: #ffffff;
+        stroke: #ffffff;
     }
 }
 
@@ -242,5 +289,9 @@
 
     .ai-message .message-content pre {
         white-space: pre;
+    }
+
+    .ai-message .message-content div.math-display {
+        text-align: left;
     }
 }
