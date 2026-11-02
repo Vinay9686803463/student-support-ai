@@ -232,7 +232,32 @@
             <!-- Input -->
             <div class="chat-input-area">
 
-                <div class="chat-input-box">
+                <div class="chip-tray" id="chipTray" hidden></div>
+
+                <div class="chat-input-box" id="inputBox">
+
+                    <button
+                        type="button"
+                        class="plus-button"
+                        id="plusButton"
+                        aria-haspopup="true"
+                        aria-expanded="false"
+                        aria-controls="plusMenu"
+                        aria-label="Open menu"
+                        onclick="togglePlusMenu(event)"
+                    >
+                        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4.5v15m7.5-7.5h-15"/></svg>
+                    </button>
+
+                    <input
+                        type="file"
+                        id="fileInput"
+                        accept=".pdf,.txt,.md,.csv,.doc,.docx,.ppt,.pptx,.xlsx,.png,.jpg,.jpeg,.gif,.webp"
+                        multiple
+                        hidden
+                        aria-hidden="true"
+                        onchange="handleFilesChosen(this)"
+                    />
 
                     <textarea
                         id="chatInput"
@@ -261,6 +286,96 @@
                         ⏹
                     </button>
 
+                </div>
+
+                <!-- Floating "+" menu (ChatGPT-style) -->
+                <div class="plus-menu" id="plusMenu" role="menu" hidden>
+                    <button type="button" role="menuitem" class="plus-menu-item"
+                        onclick="choosePlusAction('files')">
+                        <span class="plus-menu-icon files">📎</span>
+                        <span class="plus-menu-text">
+                            Add photos &amp; files
+                            <small>PDF, Office, text — up to 10 MB</small>
+                        </span>
+                    </button>
+                    <button type="button" role="menuitem" class="plus-menu-item"
+                        onclick="choosePlusAction('library')">
+                        <span class="plus-menu-icon library">📚</span>
+                        <span class="plus-menu-text">
+                            Add from library
+                            <small>Your subjects and uploaded study material</small>
+                        </span>
+                    </button>
+                    <button type="button" role="menuitem" class="plus-menu-item"
+                        onclick="choosePlusAction('image')">
+                        <span class="plus-menu-icon image">🖼️</span>
+                        <span class="plus-menu-text">
+                            Create image
+                            <small>Not available with the configured providers</small>
+                        </span>
+                    </button>
+                    <button type="button" role="menuitem" class="plus-menu-item"
+                        onclick="choosePlusAction('search')">
+                        <span class="plus-menu-icon search">🌐</span>
+                        <span class="plus-menu-text">
+                            Web search
+                            <small>Not available with the configured providers</small>
+                        </span>
+                    </button>
+                    <button type="button" role="menuitem" class="plus-menu-item"
+                        onclick="choosePlusAction('research')">
+                        <span class="plus-menu-icon research">🔬</span>
+                        <span class="plus-menu-text">
+                            Deep research
+                            <small>Not available with the configured providers</small>
+                        </span>
+                    </button>
+                    <button type="button" role="menuitem" class="plus-menu-item"
+                        onclick="choosePlusAction('sketch')">
+                        <span class="plus-menu-icon sketch">✏️</span>
+                        <span class="plus-menu-text">
+                            Sketch
+                            <small>Not available with the configured providers</small>
+                        </span>
+                    </button>
+                    <button type="button" role="menuitem" class="plus-menu-item"
+                        onclick="choosePlusAction('thinking')">
+                        <span class="plus-menu-icon thinking">💡</span>
+                        <span class="plus-menu-text">
+                            Thinking
+                            <small>Not supported by the configured model</small>
+                        </span>
+                    </button>
+                    <button type="button" role="menuitem" class="plus-menu-item"
+                        onclick="choosePlusAction('tools')">
+                        <span class="plus-menu-icon tools">🔌</span>
+                        <span class="plus-menu-text">
+                            Connected tools
+                            <small>No external tools connected</small>
+                        </span>
+                    </button>
+                </div>
+
+                <!-- Library picker modal -->
+                <div class="library-overlay" id="libraryOverlay" hidden>
+                    <div class="library-modal" role="dialog"
+                        aria-modal="true" aria-label="Add from library">
+                        <div class="library-head">
+                            <strong>Add from library</strong>
+                            <button type="button" class="library-close"
+                                onclick="closeLibrary()"
+                                aria-label="Close library">✕</button>
+                        </div>
+                        <div class="library-search">
+                            <input type="search" id="librarySearch"
+                                placeholder="Search subjects or documents..."
+                                oninput="filterLibrary()"
+                                aria-label="Search library documents" />
+                        </div>
+                        <div class="library-list" id="libraryList">
+                            <p class="library-empty">Loading library…</p>
+                        </div>
+                    </div>
                 </div>
 
                 <p class="chat-disclaimer">
