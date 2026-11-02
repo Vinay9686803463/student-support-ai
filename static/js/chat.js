@@ -12,10 +12,6 @@ var conversationHistory = [];
 var recentTopics = [];
 var displayedSuggestions = [];
 var latestSuggestionSeq = 0;
-// Attachments staged by the "+" menu, bound to the next sent message.
-var pendingAttachments = [];
-var _attachmentSeq = 0;
-var plusMenuOpen = false;
 var FALLBACK_SUGGESTIONS = [
     "Explain agile vs waterfall models",
     "Give important Computer Networks exam questions",
@@ -144,33 +140,15 @@ function clearFollowupSuggestions() {
     });
 }
 
-function addUserMessage(text, attachments) {
+function addUserMessage(text) {
     const messages = document.getElementById("chatMessages");
-    const contentEl = document.createElement("div");
-    contentEl.className = "message-content";
-    contentEl.innerHTML =
-        "<strong>You</strong><p>" +
-        escapeHtml(text) +
-        "</p>";
-    if (attachments && attachments.length > 0) {
-        const tray = document.createElement("div");
-        tray.className = "message-attachments";
-        attachments.forEach(function (att) {
-            const chip = document.createElement("span");
-            chip.className = "sent-attachment";
-            chip.textContent =
-                (att.kind === "library" ? "📚 " : "📎 ") + att.name;
-            tray.appendChild(chip);
-        });
-        contentEl.appendChild(tray);
-    }
     const el = document.createElement("div");
     el.className = "message user-message";
-    el.appendChild(contentEl);
-    el.insertAdjacentHTML(
-        "beforeend",
-        '<div class="message-avatar user-avatar">V</div>'
-    );
+    el.innerHTML =
+        '<div class="message-content"><strong>You</strong><p>' +
+        escapeHtml(text) +
+        "</p></div>" +
+        '<div class="message-avatar user-avatar">V</div>';
     messages.appendChild(el);
     scrollChat();
 }
@@ -307,9 +285,6 @@ function decodeSafeEntities(text) {
         .replace(/\$\$[^$\n]+\$\$/g, function (match) {
             return _stashValue(store, match);
         })
-        .replace(/\\\([\s\S]*?\\\)/g, function (match) {
-            return _stashValue(store, match);
-        })
         .replace(/\$[^$\n]+\$/g, function (match) {
             return _stashValue(store, match);
         });
@@ -373,104 +348,6 @@ function _normalizeEmphasisSpacing(text) {
     return out;
 }
 
-/* ============================================================
-   LaTeX-lite math renderer
-   ============================================================ */
-
-var _MATH_SYMBOLS = {
-    rightarrow: "→", to: "→", leftarrow: "←", Leftarrow: "⇐",
-    Rightarrow: "⇒", leftrightarrow: "↔", Leftrightarrow: "⇔",
-    mapsto: "↦", uparrow: "↑", downarrow: "↓",
-    times: "×", cdot: "·", div: "÷", pm: "±", mp: "∓",
-    leq: "≤", le: "≤", geq: "≥", ge: "≥", neq: "≠", ne: "≠",
-    approx: "≈", equiv: "≡", propto: "∝", infty: "∞",
-    sum: "Σ", prod: "Π", int: "∫", partial: "∂", nabla: "∇",
-    alpha: "α", beta: "β", gamma: "γ", delta: "δ", epsilon: "ε",
-    varepsilon: "ε", zeta: "ζ", eta: "η", theta: "θ", iota: "ι",
-    kappa: "κ", lambda: "λ", mu: "μ", nu: "ν", xi: "ξ", pi: "π",
-    rho: "ρ", sigma: "σ", tau: "τ", phi: "φ", varphi: "ϕ", chi: "χ",
-    psi: "ψ", omega: "ω", Gamma: "Γ", Delta: "Δ", Theta: "Θ",
-    Lambda: "Λ", Xi: "Ξ", Pi: "Π", Sigma: "Σ", Phi: "Φ", Psi: "Ψ",
-    Omega: "Ω",
-    in: "∈", notin: "∉", subset: "⊂", subseteq: "⊆",
-    cup: "∪", cap: "∩", emptyset: "∅", forall: "∀", exists: "∃",
-    neg: "¬", land: "∧", lor: "∨", lnot: "¬",
-    implies: "⇒", iff: "⇔",
-    ldots: "…", dots: "…", cdots: "⋯", prime: "′",
-    degree: "°", perp: "⊥", ell: "ℓ", hbar: "ℏ",
-    aleph: "ℵ", Re: "ℜ", Im: "ℑ"
-};
-
-// Sentinel characters that never appear in normal model text.
-var _MATH_SENTINEL = "\uE001";
-
-function _looksLikeMath(body) {
-    // Treat a $…$ fragment as math ONLY when it contains LaTeX-ish
-    // syntax. Ordinary amounts ("It costs $5 and $3") never match and
-    // stay literal text, so currency is never corrupted.
-    return /\\[a-zA-Z]/.test(body)
-        || /[\^_]/.test(body)
-        || /[=+<>]|≤|≥|≠|→|←|↔|×|÷|±|Σ|√/.test(body);
-}
-
-function _mathEscape(text) {
-    return String(text)
-        .replace(/&(?!(?:[a-zA-Z]+|#\d+|#[xX][0-9a-fA-F]+);)/g, "&amp;")
-        .replace(/</g, "&lt;")
-        .replace(/>/g, "&gt;")
-        .replace(/"/g, "&quot;");
-}
-
-function _renderMathInner(tex) {
-    var out = String(tex);
-    // Content is emitted as HTML — escape raw markup characters first.
-    // The ampersand guard is entity-aware, so already-encoded content
-    // (from the block-level escape pass) is not double-escaped.
-    out = _mathEscape(out);
-    // 1. \frac{num}{den} — loop so several fractions in one body all
-    //    convert (nested fractions converge in bounded iterations).
-    var fracGuard = 0;
-    while (/\\frac\{([^{}]*)\}\{([^{}]*)\}/.test(out) && fracGuard < 50) {
-        fracGuard += 1;
-        out = out.replace(/\\frac\{([^{}]*)\}\{([^{}]*)\}/g,
-            function (_match, num, den) {
-                return '<span class="math-frac">'
-                    + '<span class="math-frac-top">'
-                    + _renderMathInner(num) + "</span>"
-                    + '<span class="math-frac-bottom">'
-                    + _renderMathInner(den) + "</span></span>";
-            });
-    }
-    // 2. \sqrt{rad} and bare \sqrt.
-    out = out.replace(/\\sqrt\{([^{}]*)\}/g, function (_match, rad) {
-        return "√(" + _renderMathInner(rad) + ")";
-    });
-    out = out.replace(/\\sqrt([^\\a-zA-Z0-9{}])/g, "√$1");
-    // 3. Symbol commands (\rightarrow, \times, Greek letters, …).
-    out = out.replace(/\\([a-zA-Z]+)/g, function (match, name) {
-        return Object.prototype.hasOwnProperty.call(_MATH_SYMBOLS, name)
-            ? _MATH_SYMBOLS[name] : match;
-    });
-    // 4. Left/right sizing markers carry no meaning here.
-    out = out.replace(/\\left|\\right/g, "");
-    // 5. Sub/superscripts: brace form first, then a single token.
-    out = out.replace(/_\{([^{}]*)\}/g, function (_match, inner) {
-        return "<sub>" + inner + "</sub>";
-    });
-    out = out.replace(/\^\{([^{}]*)\}/g, function (_match, inner) {
-        return "<sup>" + inner + "</sup>";
-    });
-    out = out.replace(/_([0-9a-zA-Z])/g, "<sub>$1</sub>");
-    out = out.replace(/\^([0-9a-zA-Z])/g, "<sup>$1</sup>");
-    return out;
-}
-
-function _renderMath(tex) {
-    return _renderMathInner(tex);
-}
-
-/* ---------- Inline renderer ---------- */
-
 function renderInlineText(text) {
     if (!text) {
         return "";
@@ -482,26 +359,15 @@ function renderInlineText(text) {
     }
 
     // 1. Protect inline code, math and safe links so emphasis rules never
-    //    touch them. Math bodies are stored with a sentinel so the
-    //    restore step renders them as real symbols; the bare $…$ form
-    //    requires LaTeX-ish content so prose like "It costs $5 and $3"
-    //    stays literal text.
+    //    touch them.
     text = text.replace(/`[^`\n]+`/g, function (match) {
         return stash("<code>" + match.slice(1, -1) + "</code>");
     });
-    text = text.replace(/\\\(([\s\S]*?)\\\)/g,
-        function (_match, body) {
-            return stash(_MATH_SENTINEL + body + _MATH_SENTINEL);
-        });
-    text = text.replace(/\$\$([^$\n]+?)\$\$/g,
-        function (_match, body) {
-            return stash(_MATH_SENTINEL + body + _MATH_SENTINEL);
-        });
-    text = text.replace(/\$([^$\n]+?)\$/g, function (match, body) {
-        if (!_looksLikeMath(body)) {
-            return match;   // ordinary text — do not corrupt
-        }
-        return stash(_MATH_SENTINEL + body + _MATH_SENTINEL);
+    text = text.replace(/\$\$[\s\S]*?\$\$/g, function (match) {
+        return stash(match);
+    });
+    text = text.replace(/\$[^$\n]+\$/g, function (match) {
+        return stash(match);
     });
     text = text.replace(/\[([^\]\n]+)\]\((https?:\/\/[^\s)]+)\)/g,
         function (match, label, url) {
@@ -537,15 +403,9 @@ function renderInlineText(text) {
             return prefix + '<em>' + renderInlineText(inner) + '</em>';
         });
 
-    // 4. Restore protected content. Sentinelled bodies are rendered as
-    //    real math; plain stashes (code, links, escapes) come back as-is.
+    // 4. Restore protected content.
     text = text.replace(/\uE000(\d+)\uE000/g, function (match, index) {
-        var value = store[parseInt(index, 10)] || "";
-        if (value.charAt(0) === _MATH_SENTINEL &&
-                value.charAt(value.length - 1) === _MATH_SENTINEL) {
-            return _renderMath(value.slice(1, -1));
-        }
-        return value;
+        return store[parseInt(index, 10)];
     });
 
     // 5. Add spaces between word characters and emphasis tags. This is
@@ -638,26 +498,10 @@ function renderMarkdown(text) {
     // are preserved; the remaining text is decoded once, internal
     // commentary is removed, and only then escaped for HTML.
     var fenceStore = [];
-    var displayStore = [];
     var remainder = String(text || "").replace(/```[\s\S]*?(?:```|$)/g,
         function (block) {
             fenceStore.push(block);
             return "\uE000F" + (fenceStore.length - 1) + "\uE000";
-        });
-    // Display math is stashed before block parsing so multi-line
-    // formulas survive blank-line splitting (and so Markdown rules
-    // never touch LaTeX backslashes). Only pair-terminated forms are
-    // captured: a half-streamed "$$E = m" opener stays literal until
-    // the finished answer re-renders — legible, never corrupted, and
-    // never swallowing the rest of the text.
-    remainder = remainder.replace(/\$\$([^$]+)\$\$/g, function (_match, body) {
-        displayStore.push(body);
-        return "\n\uE000B" + (displayStore.length - 1) + "\uE000\n";
-    });
-    remainder = remainder.replace(/\\\[([\s\S]*?)\\\]/g,
-        function (_match, body) {
-            displayStore.push(body);
-            return "\n\uE000B" + (displayStore.length - 1) + "\uE000\n";
         });
 
     var decoded = decodeSafeEntities(remainder);
@@ -705,9 +549,7 @@ function renderMarkdown(text) {
             }).join("") + "</tr>");
         });
         out.push("</table>");
-        // Wrapped so wide tables scroll horizontally on small screens
-        // instead of overflowing the bubble (see .table-wrap CSS).
-        html.push('<div class="table-wrap">' + out.join("") + "</div>");
+        html.push(out.join(""));
         tableBuf = [];
     }
     function flushQuote() {
@@ -724,9 +566,7 @@ function renderMarkdown(text) {
     for (var i = 0; i < lines.length; i++) {
         var line = lines[i];
         var fenceMatch = line.match(/^\uE000F(\d+)\uE000$/);
-        var displayMatch = !fenceMatch &&
-            line.match(/^\uE000B(\d+)\uE000$/);
-        if (fenceMatch || displayMatch) {
+        if (fenceMatch) {
             flushPara();
             flushList();
             flushTable();
@@ -744,12 +584,11 @@ function renderMarkdown(text) {
             continue;
         }
 
-        var quoteMatch = trimmed.match(/^&gt;\s?(.*)$/);
-        if (quoteMatch) {
+        if (trimmed.indexOf(">") === 0) {
             flushPara();
             flushList();
             flushTable();
-            quoteBuf.push(quoteMatch[1]);
+            quoteBuf.push(trimmed.replace(/^>\s?/, ""));
             continue;
         }
         if (quoteBuf.length) {
@@ -824,13 +663,6 @@ function renderMarkdown(text) {
             .replace(/\n$/, "");
         return "<pre><code>" + escapeHtml(inner) + "</code></pre>";
     });
-    // Display math: own-line forms become centered blocks; any token
-    // that survived inside a paragraph line still becomes a valid
-    // inline-block span (never a <div> inside <p>).
-    out = out.replace(/\uE000B(\d+)\uE000/g, function (_match, index) {
-        var body = displayStore[parseInt(index, 10)] || "";
-        return '<div class="math-display">' + _renderMath(body) + "</div>";
-    });
     return out;
 }
 
@@ -870,23 +702,6 @@ function buildPayload(message) {
     }
     if (ctx.module_number) {
         payload.module_number = ctx.module_number;
-    }
-    if (pendingAttachments.length > 0) {
-        payload.attachments = pendingAttachments.map(function (att) {
-            if (att.kind === "library") {
-                return {
-                    type: "library",
-                    document_id: att.documentId,
-                    name: att.name
-                };
-            }
-            return {
-                type: "file",
-                name: att.name,
-                size: att.size,
-                text: att.text
-            };
-        });
     }
     if (conversationHistory.length > 0) {
         payload.history = conversationHistory.slice(-6);
@@ -939,15 +754,10 @@ async function sendMessage() {
 
     lastUserMessage = message;
     lastFailedMessage = null;
-    const sentAttachments = pendingAttachments.slice();
-    addUserMessage(message, sentAttachments);
+    addUserMessage(message);
     conversationHistory.push({ role: "user", content: message });
     input.value = "";
     input.focus();
-
-    // Attachments belong to exactly this message; clear the tray now.
-    pendingAttachments = [];
-    renderChipTray();
 
     const thinking = addThinking();
     const contentP = thinking.querySelector(".message-content p");
@@ -961,24 +771,10 @@ async function sendMessage() {
     let sources = [];
     let streamed = false;
     let serverSuggestions = [];
-    let renderTimer = null;
-    let terminalRendered = false;
 
-    // During streaming, re-rendering the full markdown on EVERY token
-    // re-parses a growing document (O(n^2) on long answers) and can
-    // jank on slower devices. A ~90ms cadence stays visually
-    // continuous while capping the render rate; the final render in
-    // the finally block below still draws the finished answer exactly
-    // once.
     const renderStreamed = function () {
-        if (renderTimer) {
-            return;
-        }
-        renderTimer = setTimeout(function () {
-            renderTimer = null;
-            contentP.innerHTML = formatReply(fullText);
-            scrollChat();
-        }, 90);
+        contentP.innerHTML = formatReply(fullText);
+        scrollChat();
     };
 
     try {
@@ -1033,15 +829,6 @@ async function sendMessage() {
                     renderStreamed();
                 } else if (eventName === "sources" && data.sources) {
                     sources = data.sources;
-                    // Retrieved context arrived: swap the waiting
-                    // indicator copy (identical .typing markup and
-                    // styling) so the wait state says what is actually
-                    // happening — reading the retrieved materials.
-                    if (!fullText && contentP.querySelector(".typing")) {
-                        contentP.innerHTML =
-                            '<p class="typing">Reading your study materials' +
-                            '<span>.</span><span>.</span><span>.</span></p>';
-                    }
                 } else if (eventName === "done") {
                     updateStatus({
                         engine: data.used_ai ? (data.provider || "AI") : "study bank",
@@ -1065,9 +852,11 @@ async function sendMessage() {
         if (error && error.name === "AbortError") {
             contentP.innerHTML = formatReply(fullText || "(stopped)") +
                 '<br><em>⏹ Stopped. <button type="button" class="mini-btn" onclick="retryMessage()">↻ Retry</button></em>';
-            terminalRendered = true;
             lastFailedMessage = message;
-            return; // finally{} does the busy/aborter/scroll cleanup
+            setBusy(false);
+            currentAborter = null;
+            scrollChat();
+            return;
         }
         // Streaming failed: fall back to the plain JSON endpoint once.
         try {
@@ -1103,30 +892,12 @@ async function sendMessage() {
                 '<button type="button" class="mini-btn" onclick="retryMessage()">↻ Retry</button>';
             contentP.appendChild(err);
             lastFailedMessage = message;
-            terminalRendered = true;
-            // A failed exchange must not stay in the prompt history:
-            // retryMessage() resubmits it, and stale duplicates would
-            // bloat later prompts and change the effective cache key.
-            const tail = conversationHistory[conversationHistory.length - 1];
-            if (tail && tail.role === "user" && tail.content === message) {
-                conversationHistory.pop();
-            }
             if (suggestionSeq === latestSuggestionSeq) {
                 clearFollowupSuggestions();
                 addFollowupSuggestions(FALLBACK_SUGGESTIONS);
             }
         }
     } finally {
-        // Cancel any pending throttled render, then draw the finished
-        // answer exactly once (a token may have landed inside the last
-        // throttle window).
-        if (renderTimer) {
-            clearTimeout(renderTimer);
-            renderTimer = null;
-        }
-        if (fullText && streamed && !terminalRendered) {
-            contentP.innerHTML = formatReply(fullText);
-        }
         setBusy(false);
         currentAborter = null;
         scrollChat();
@@ -1185,615 +956,4 @@ document.addEventListener("DOMContentLoaded", function () {
         input.value = ctx.q;
         sendMessage();
     }
-    // Warm the study library during idle time after the page settles,
-    // so opening the picker is instant instead of a round trip.
-    window.setTimeout(prefetchLibrary, 400);
 });
-
-/* ============================================================
-   "+" MENU — attachments, library picker, capability notices
-   ============================================================ */
-
-var _CHAT_FILE_MAX_BYTES = 10 * 1024 * 1024;   // matches backend limit
-var _CHAT_MAX_ATTACHMENTS = 3;                 // matches backend limit
-
-var _CHAT_TEXT_EXTENSIONS =
-    /\.(pdf|txt|md|csv|doc|docx|ppt|pptx|xlsx)$/i;
-var _CHAT_IMAGE_EXTENSIONS = /\.(png|jpe?g|gif|webp)$/i;
-
-var _libraryCache = null;       // metadata only, reused for the page's lifetime
-var _libraryAborter = null;     // in-flight request; aborted when the dialog closes
-
-/* ---------- Menu open / close, keyboard and outside click ---------- */
-
-function plusMenuEl() {
-    return document.getElementById("plusMenu");
-}
-
-/* Single source of truth for the toggle button: menu state drives the
-   ✕/"+" icon (the .open rotation), aria-expanded and the accessible
-   name together, so they can never drift apart. aria-label changes the
-   screen-reader name only — no visible tooltip is attached. */
-function _syncPlusButton(open) {
-    const button = document.getElementById("plusButton");
-    if (!button) {
-        return;
-    }
-    button.classList.toggle("open", !!open);
-    button.setAttribute("aria-expanded", open ? "true" : "false");
-    button.setAttribute("aria-label", open ? "Close menu" : "Open menu");
-}
-
-function togglePlusMenu(event) {
-    if (event) {
-        // Never let the toggle click reach the outside-click closer —
-        // that would close the menu twice in one click.
-        event.stopPropagation();
-    }
-    if (plusMenuOpen) {
-        closePlusMenu();
-        return;
-    }
-    closePlusToast();
-    const menu = plusMenuEl();
-    menu.hidden = false;
-    menu.style.display = "flex";
-    plusMenuOpen = true;
-    _syncPlusButton(true);
-    const first = menu.querySelector(".plus-menu-item");
-    if (first) {
-        first.focus();
-    }
-    // Idempotent (re)binding — removal first, so exactly one outside
-    // click and one Escape handler exist no matter how often the
-    // toggle cycles.
-    document.removeEventListener("click", _plusOutsideClick);
-    document.addEventListener("click", _plusOutsideClick);
-    document.removeEventListener("keydown", _plusKeydown);
-    document.addEventListener("keydown", _plusKeydown);
-}
-
-function closePlusMenu(refocus) {
-    const menu = plusMenuEl();
-    if (menu) {
-        // Effective because of the .plus-menu[hidden] CSS guard.
-        menu.hidden = true;
-        menu.style.display = "";
-    }
-    plusMenuOpen = false;
-    _syncPlusButton(false);
-    if (refocus) {
-        const button = document.getElementById("plusButton");
-        if (button) {
-            button.focus();
-        }
-    }
-    document.removeEventListener("click", _plusOutsideClick);
-    document.removeEventListener("keydown", _plusKeydown);
-}
-
-function _plusOutsideClick(event) {
-    if (plusMenuEl().contains(event.target) ||
-        event.target === document.getElementById("plusButton")) {
-        return;
-    }
-    closePlusMenu();
-}
-
-function _plusKeydown(event) {
-    if (event.key === "Escape") {
-        event.stopPropagation();
-        event.preventDefault();
-        closePlusMenu(true);
-        return;
-    }
-    if (event.key === "Tab") {
-        // Keep focus cycling inside the open menu.
-        const items = plusMenuEl().querySelectorAll(".plus-menu-item");
-        if (!items.length) {
-            return;
-        }
-        const firstItem = items[0];
-        const lastItem = items[items.length - 1];
-        if (event.shiftKey && document.activeElement === firstItem) {
-            event.preventDefault();
-            lastItem.focus();
-        } else if (!event.shiftKey &&
-                document.activeElement === lastItem) {
-            event.preventDefault();
-            firstItem.focus();
-        }
-    }
-}
-
-/* Show an honest capability notice for unconfigured options. */
-var _toastTimer = null;
-
-function showPlusToast(text) {
-    closePlusToast();
-    const inputBox = document.getElementById("inputBox");
-    const toast = document.createElement("div");
-    toast.className = "plus-toast";
-    toast.id = "plusToast";
-    toast.setAttribute("role", "status");
-    toast.textContent = text;
-    if (inputBox) {
-        inputBox.appendChild(toast);
-    } else {
-        document.body.appendChild(toast);
-    }
-    _toastTimer = setTimeout(closePlusToast, 5000);
-}
-
-function closePlusToast() {
-    const toast = document.getElementById("plusToast");
-    if (toast) {
-        toast.remove();
-    }
-    if (_toastTimer) {
-        clearTimeout(_toastTimer);
-        _toastTimer = null;
-    }
-}
-
-var _UNSUPPORTED_OPTIONS = {
-    image: "Image generation is not available: none of the configured "
-        + "AI providers support image creation. Ask a study question "
-        + "instead — text answers work as usual.",
-    search: "Web search is not available: this deployment has no web "
-        + "search backend configured. Answers still use your subjects' "
-        + "study material and general knowledge.",
-    research: ("Deep research is not available: no research workflow is "
-        + "configured in this deployment. "
-        + "The Detailed mode gives step-by-step answers."),
-    sketch: ("Sketch is not available in this build: no drawing editor "
-        + "is configured, and current providers cannot analyse images."),
-    thinking: ("Thinking mode is not available: the configured AI "
-        + "model does not support dedicated reasoning controls. "
-        + "Use Detailed mode for step-by-step answers."),
-    tools: ("No external tools are connected. The study library, "
-        + "RAG retrieval and the AI chat are the active capabilities.")
-};
-
-function choosePlusAction(action) {
-    closePlusMenu();   // outside-click listener is removed here
-    if (action === "files") {
-        document.getElementById("fileInput").click();
-        return;
-    }
-    if (action === "library") {
-        openLibrary();
-        return;
-    }
-    if (Object.prototype.hasOwnProperty.call(_UNSUPPORTED_OPTIONS, action)) {
-        showPlusToast(_UNSUPPORTED_OPTIONS[action]);
-        return;
-    }
-    showPlusToast("That option is not available.");
-}
-
-/* ---------- File attachments ---------- */
-
-function _formatBytes(bytes) {
-    if (typeof bytes !== "number" || bytes < 0) {
-        return "";
-    }
-    if (bytes < 1024) {
-        return bytes + " B";
-    }
-    if (bytes < 1024 * 1024) {
-        return (bytes / 1024).toFixed(1) + " KB";
-    }
-    return (bytes / (1024 * 1024)).toFixed(1) + " MB";
-}
-
-function handleFilesChosen(input) {
-    const picked = Array.from(input.files || []);
-    input.value = "";   // allow re-picking the same file
-    picked.forEach(function (file) {
-        uploadChatFile(file);
-    });
-}
-
-function uploadChatFile(file) {
-    if (pendingAttachments.length >= _CHAT_MAX_ATTACHMENTS) {
-        showPlusToast("Up to " + _CHAT_MAX_ATTACHMENTS
-            + " attachments per message.");
-        return;
-    }
-    const lower = file.name.toLowerCase();
-    if (!_CHAT_TEXT_EXTENSIONS.test(lower) &&
-            !_CHAT_IMAGE_EXTENSIONS.test(lower)) {
-        showPlusToast("Only PDF, Word, PowerPoint, Excel, text and "
-            + "image files can be attached.");
-        return;
-    }
-    if (file.size > _CHAT_FILE_MAX_BYTES) {
-        showPlusToast('"' + file.name + '" is larger than the 10 MB limit.');
-        return;
-    }
-
-    const attId = "att" + (++_attachmentSeq);
-    const isImage = _CHAT_IMAGE_EXTENSIONS.test(lower);
-    const chip = {
-        kind: "file",
-        id: attId,
-        name: file.name,
-        size: file.size,
-        status: "busy",
-        note: isImage ? "Reading…" : "Extracting text…"
-    };
-    pendingAttachments.push(chip);
-    renderChipTray();
-
-    const data = new FormData();
-    data.append("file", file, file.name);
-
-    fetch("/api/chat/attachments", { method: "POST", body: data })
-        .then(function (response) {
-            return response.json().then(function (json) {
-                return { ok: response.ok, json: json };
-            });
-        })
-        .then(function (result) {
-            const chipLive = pendingAttachments.find(function (a) {
-                return a.id === attId;
-            });
-            if (!chipLive) {
-                return;   // removed while uploading
-            }
-            if (!result.ok || !result.json || !result.json.ok) {
-                chipLive.status = "failed";
-                chipLive.note = (result.json && result.json.error)
-                    || "Upload failed.";
-                chipLive.text = "";
-                renderChipTray();
-                if (result.json && result.json.error) {
-                    showPlusToast(result.json.error);
-                }
-                return;
-            }
-            const uploaded = result.json.attachment;
-            chipLive.status = "ready";
-            chipLive.note = "";
-            chipLive.text = uploaded.text || "";
-            chipLive.size = uploaded.size || chipLive.size;
-            if (result.json.unavailable) {
-                chipLive.note = result.json.unavailable;
-                chipLive.status = "failed";
-                chipLive.text = "";
-            } else if (uploaded.truncated) {
-                chipLive.note = "Excerpt truncated (long file)";
-            }
-            renderChipTray();
-        })
-        .catch(function () {
-            const chipLive = pendingAttachments.find(function (a) {
-                return a.id === attId;
-            });
-            if (chipLive) {
-                chipLive.status = "failed";
-                chipLive.note = "Upload failed — check connection.";
-                chipLive.text = "";
-                renderChipTray();
-            }
-        });
-}
-
-function removeAttachment(id) {
-    pendingAttachments = pendingAttachments.filter(function (a) {
-        return a.id !== id;
-    });
-    renderChipTray();
-}
-
-function _escapeAttr(value) {
-    return escapeHtml(String(value || ""));
-}
-
-function renderChipTray() {
-    const tray = document.getElementById("chipTray");
-    if (!tray) {
-        return;
-    }
-    tray.innerHTML = "";
-    if (!pendingAttachments.length) {
-        tray.hidden = true;
-        return;
-    }
-    tray.hidden = false;
-    pendingAttachments.forEach(function (att) {
-        const chip = document.createElement("span");
-        chip.className = "attachment-chip";
-        if (att.status === "busy") {
-            chip.classList.add("is-busy");
-        } else if (att.status === "failed") {
-            chip.classList.add("is-failed");
-        }
-        const icon = document.createElement("span");
-        icon.className = "chip-icon";
-        icon.textContent = att.kind === "library" ? "📚" : "📎";
-        const meta = document.createElement("span");
-        meta.className = "chip-name";
-        meta.textContent = att.name +
-            (att.note ? " — " + att.note : "") +
-            (att.kind === "file" && att.size ? "" : "");
-        const size = document.createElement("span");
-        size.className = "chip-size";
-        size.textContent = _formatBytes(att.size);
-        const remove = document.createElement("button");
-        remove.type = "button";
-        remove.className = "chip-remove";
-        remove.setAttribute("aria-label",
-            "Remove attachment " + att.name);
-        remove.textContent = "✕";
-        remove.onclick = function () {
-            removeAttachment(att.id);
-        };
-        chip.appendChild(icon);
-        chip.appendChild(meta);
-        chip.appendChild(size);
-        chip.appendChild(remove);
-        tray.appendChild(chip);
-    });
-}
-
-/* ---------- Library picker ---------- */
-
-function _libraryStopFetch() {
-    if (_libraryAborter) {
-        _libraryAborter.abort();
-        _libraryAborter = null;
-    }
-}
-
-/* Warm the library metadata in idle time after the chat page loads, so
-   opening the dialog is instant instead of paying one round trip to the
-   database per first open. One request total: the in-flight guard in
-   startLibraryLoad makes a later openLibrary() reuse the same attempt,
-   never stacking duplicates. */
-function prefetchLibrary() {
-    if (_libraryCache || _libraryAborter) {
-        return;   // already available or already loading
-    }
-    const list = document.getElementById("libraryList");
-    if (list) {
-        startLibraryLoad(list);
-    }
-}
-
-function openLibrary() {
-    const overlay = document.getElementById("libraryOverlay");
-    if (!overlay) {
-        return;
-    }
-    overlay.hidden = false;
-    const list = document.getElementById("libraryList");
-    const search = document.getElementById("librarySearch");
-    if (search) {
-        search.value = "";
-    }
-
-    if (_libraryCache) {
-        renderLibrary(_libraryCache);
-    } else {
-        // No cached copy yet: show the loading state and attach to an
-        // in-flight (likely prefetched) request, or start a fresh one.
-        // A failed attempt is never sticky: closing and reopening
-        // always retries cleanly.
-        if (list) {
-            list.innerHTML = (
-                '<p class="library-loading"><span class="library-spinner" '
-                + 'aria-hidden="true"></span>Loading library…</p>'
-            );
-        }
-        prefetchLibrary();
-    }
-
-    // (Re-)binding is idempotent: removal first, so exactly one Escape
-    // handler exists no matter how often the dialog opens.
-    document.removeEventListener("keydown", _libraryKeydown);
-    document.addEventListener("keydown", _libraryKeydown);
-    if (search) {
-        search.focus();
-    }
-}
-
-function startLibraryLoad(list) {
-    if (!list || _libraryAborter) {
-        // A fetch is already in flight: reuse it (no duplicate requests
-        // when the dialog opens repeatedly or prefetch already ran).
-        return;
-    }
-    const overlay = document.getElementById("libraryOverlay");
-    const aborter = new AbortController();
-    _libraryAborter = aborter;
-
-    // Watchdog: a request that hangs must end in the retry state,
-    // never in a spinner that can never stop.
-    const watchdog = setTimeout(function () {
-        aborter.abort();
-    }, 20000);
-
-    const settled = function () {
-        clearTimeout(watchdog);
-        if (_libraryAborter === aborter) {
-            _libraryAborter = null;
-        }
-    };
-
-    list.innerHTML = (
-        '<p class="library-loading"><span class="library-spinner" '
-        + 'aria-hidden="true"></span>Loading library…</p>'
-    );
-
-    fetch("/api/chat/library", { signal: aborter.signal })
-        .then(function (response) {
-            if (!response.ok) {
-                // An API failure is an error state, never a silent
-                // "empty library" success.
-                throw new Error("HTTP " + response.status);
-            }
-            return response.json();
-        })
-        .then(function (json) {
-            settled();
-            _libraryCache = (json && Array.isArray(json.documents))
-                ? json.documents
-                : [];
-            if (overlay && !overlay.hidden) {
-                renderLibrary(_libraryCache);
-            }
-        })
-        .catch(function () {
-            settled();
-            if (!overlay || overlay.hidden) {
-                // Closed while loading: nothing to update, and the
-                // next open starts a fresh attempt.
-                return;
-            }
-            list.innerHTML = (
-                '<p class="library-empty">Could not load the library. '
-                + 'Check your connection and try again.</p>'
-                + '<div class="library-retry-wrap">'
-                + '<button type="button" class="library-retry-btn" '
-                + 'onclick="retryLibraryLoad()">↻ Try again</button>'
-                + '</div>'
-            );
-        });
-}
-
-function retryLibraryLoad() {
-    const list = document.getElementById("libraryList");
-    if (!list) {
-        return;
-    }
-    startLibraryLoad(list);
-}
-
-function closeLibrary() {
-    const overlay = document.getElementById("libraryOverlay");
-    if (overlay) {
-        overlay.hidden = true;
-    }
-    // Closing is allowed in EVERY state — including while the library
-    // request is still in flight or after it failed: nothing here
-    // depends on the API. Stop the pending request so no loading
-    // continues in the background; the next open retries cleanly.
-    _libraryStopFetch();
-    document.removeEventListener("keydown", _libraryKeydown);
-}
-
-function _libraryKeydown(event) {
-    if (event.key === "Escape") {
-        event.stopPropagation();
-        closeLibrary();
-    }
-}
-
-function _libraryLabel(doc) {
-    const label = doc.filename || doc.title || "Document";
-    return label.length > 80 ? label.slice(0, 77) + "..." : label;
-}
-
-function renderLibrary(documents) {
-    const list = document.getElementById("libraryList");
-    if (!list) {
-        return;
-    }
-    list.innerHTML = "";
-    if (!documents.length) {
-        list.innerHTML =
-            '<p class="library-empty">No study documents are '
-            + "available in the library yet.</p>";
-        return;
-    }
-    documents.forEach(function (doc) {
-        const item = document.createElement("button");
-        item.type = "button";
-        item.className = "library-item";
-        item.setAttribute("data-search", (
-            (doc.subject_code || "") + " " +
-            (doc.subject_name || "") + " " +
-            (doc.title || "") + " " +
-            (doc.filename || "")
-        ).toLowerCase());
-
-        const badge = document.createElement("span");
-        badge.className = "lib-badge";
-        badge.textContent = doc.subject_code || "DOC";
-
-        const text = document.createElement("span");
-        text.className = "lib-text";
-
-        const title = document.createElement("span");
-        title.className = "lib-title";
-        title.textContent = _libraryLabel(doc);
-
-        const meta = document.createElement("span");
-        meta.className = "lib-meta";
-        const modulePart = doc.module_number
-            ? " • Module " + doc.module_number : "";
-        const pagesPart = doc.page_count
-            ? " • " + doc.page_count + " pages" : "";
-        meta.textContent = (doc.subject_name || "") + modulePart + pagesPart;
-
-        text.appendChild(title);
-        text.appendChild(meta);
-        item.appendChild(badge);
-        item.appendChild(text);
-        item.onclick = function () {
-            addLibraryAttachment(doc);
-        };
-        list.appendChild(item);
-    });
-}
-
-function filterLibrary() {
-    const search = document.getElementById("librarySearch");
-    if (!search || !_libraryCache) {
-        return;
-    }
-    const query = search.value.trim().toLowerCase();
-    renderLibrary(_libraryCache.filter(function (doc) {
-        if (!query) {
-            return true;
-        }
-        const haystack = (
-            (doc.subject_code || "") + " " +
-            (doc.subject_name || "") + " " +
-            (doc.title || "") + " " +
-            (doc.filename || "")
-        ).toLowerCase();
-        return haystack.indexOf(query) !== -1;
-    }));
-}
-
-function addLibraryAttachment(doc) {
-    if (pendingAttachments.length >= _CHAT_MAX_ATTACHMENTS) {
-        showPlusToast("Up to " + _CHAT_MAX_ATTACHMENTS
-            + " attachments per message.");
-        closeLibrary();
-        return;
-    }
-    const already = pendingAttachments.find(function (a) {
-        return a.kind === "library" && a.documentId === doc.id;
-    });
-    if (already) {
-        closeLibrary();
-        showPlusToast(_libraryLabel(doc) + " is already attached.");
-        return;
-    }
-    pendingAttachments.push({
-        kind: "library",
-        id: "lib" + (++_attachmentSeq),
-        documentId: doc.id,
-        name: _libraryLabel(doc),
-        size: (doc.page_count || 0) * 1200,   // estimate for display only
-        status: "ready",
-        note: ""
-    });
-    renderChipTray();
-    closeLibrary();
-    document.getElementById("chatInput").focus();
-}
