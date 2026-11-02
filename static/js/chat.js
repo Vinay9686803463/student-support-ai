@@ -686,25 +686,6 @@ function renderMarkdown(text) {
         if (!tableBuf.length) {
             return;
         }
-        // Derive per-column alignment from the separator row (if any)
-        // so Markdown tables honour :--- / :---: / ---: markers.
-        var separatorLine = null;
-        tableBuf.forEach(function (line) {
-            if (!separatorLine && _isTableSeparator(line)) {
-                separatorLine = line;
-            }
-        });
-        var aligns = [];
-        if (separatorLine) {
-            aligns = separatorLine.replace(/^\||\|$/g, "").split("|").map(function (cell) {
-                var c = cell.trim();
-                var left = c.charAt(0) === ":";
-                var right = c.charAt(c.length - 1) === ":";
-                if (left && right) { return "center"; }
-                if (right) { return "right"; }
-                return "left";
-            });
-        }
         var rows = tableBuf.filter(function (line) {
             return !_isTableSeparator(line);
         });
@@ -718,12 +699,8 @@ function renderMarkdown(text) {
         rows.forEach(function (line, index) {
             var cells = line.replace(/^\||\|$/g, "").split("|");
             var tag = index === 0 ? "th" : "td";
-            out.push("<tr>" + cells.map(function (cell, ci) {
-                var align = aligns[ci] || "left";
-                var styleAttr = align !== "left"
-                    ? ' style="text-align:' + align + '"' : "";
-                return "<" + tag + styleAttr + ">" +
-                    renderInline(cell.trim()) +
+            out.push("<tr>" + cells.map(function (cell) {
+                return "<" + tag + ">" + renderInline(cell.trim()) +
                     "</" + tag + ">";
             }).join("") + "</tr>");
         });
