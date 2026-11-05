@@ -1395,3 +1395,4 @@ document.addEventListener("DOMContentLoaded", function () {
         sendMessage();
     }
 });
+ 
