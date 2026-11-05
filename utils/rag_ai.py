@@ -152,7 +152,9 @@ def get_last_provider_error():
 _COOLDOWN_CODES = frozenset({
     "auth_invalid", "quota_exceeded", "quota_exhausted",
 })
-_PROVIDER_COOLDOWN = {"provider": None, "code": None, "until": 0.0}
+# Each provider owns its own cooldown. One provider's failure or recovery
+# must never affect another provider.
+_PROVIDER_COOLDOWN = {}
 
 
 def _provider_cooldown_seconds():
@@ -161,35 +163,33 @@ def _provider_cooldown_seconds():
 
 def _start_provider_cooldown(code, provider=None):
     seconds = _provider_cooldown_seconds()
-    if seconds <= 0:
+    if seconds <= 0 or code not in _COOLDOWN_CODES or not provider:
         return
-    if code in _COOLDOWN_CODES:
-        _PROVIDER_COOLDOWN.update(
-            {
-                "provider": provider or "unknown",
-                "code": code,
-                "until": time.monotonic() + seconds,
-            }
-        )
+    _PROVIDER_COOLDOWN[provider] = {
+        "code": code,
+        "until": time.monotonic() + seconds,
+    }
 
 
 def _provider_cooldown_code(provider=None):
-    """Active cooldown code for *provider*, or None when retry is OK.
-
-    Scoped per provider: an exhausted local Ollama or a bad OpenAI key
-    must not park Gemini, and vice versa.
-    """
-    if _PROVIDER_COOLDOWN["until"] <= time.monotonic():
+    """Return the active cooldown code for one provider."""
+    if not provider:
         return None
-    if provider and _PROVIDER_COOLDOWN["provider"] not in (None, provider):
+    state = _PROVIDER_COOLDOWN.get(provider)
+    if not state:
         return None
-    return _PROVIDER_COOLDOWN["code"]
+    if state["until"] <= time.monotonic():
+        _PROVIDER_COOLDOWN.pop(provider, None)
+        return None
+    return state["code"]
 
 
-def _clear_provider_cooldown():
-    _PROVIDER_COOLDOWN.update(
-        {"provider": None, "code": None, "until": 0.0}
-    )
+def _clear_provider_cooldown(provider=None):
+    """Clear only the named provider; no argument clears all (legacy use)."""
+    if provider:
+        _PROVIDER_COOLDOWN.pop(provider, None)
+    else:
+        _PROVIDER_COOLDOWN.clear()
 
 
 def _record_provider_error(code, model=None, provider=None):
@@ -302,7 +302,7 @@ def _call_gemini(prompt, timeout=30):
 
             if answer:
                 print(f"GEMINI OK model={model_name} chars={len(answer)}")
-                _clear_provider_cooldown()
+                _clear_provider_cooldown("gemini")
                 return answer
 
         except Exception as error:
@@ -344,7 +344,7 @@ def _stream_gemini(prompt, timeout=30):
                     emitted = True
                     yield piece
             if emitted:
-                _clear_provider_cooldown()
+                _clear_provider_cooldown("gemini")
                 return
         except Exception as error:
             code = _classify_provider_error(error)
@@ -561,8 +561,21 @@ def answer_with_rag(
     # Bounded fallback strategy: while a fatal provider state (bad key /
     # exhausted quota) is parked, skip straight to the honest study-bank
     # fallback instead of paying a network timeout on every message.
+    gemini_cooling_down = (
+        provider == "gemini"
+        and bool(_provider_cooldown_code("gemini"))
+    )
     if provider and _provider_cooldown_code(provider):
         provider = None
+
+    # Groq may take over when Gemini is cooling down, or after a
+    # normal Gemini attempt returns no answer. Do not override the
+    # built-in fallback when Gemini is unavailable or raises outward.
+    gemini_fallback_eligible = bool(
+        gemini_cooling_down
+        and configured_provider() == "gemini"
+        and gemini_available()
+    )
 
     # Try the configured model provider (OpenAI by default).
     if provider == "openai":
@@ -577,7 +590,7 @@ def answer_with_rag(
 
             if answer:
 
-                _clear_provider_cooldown()
+                _clear_provider_cooldown("openai")
                 response = {
                     "answer": answer,
                     "sources": results,
@@ -623,7 +636,7 @@ def answer_with_rag(
 
             if answer:
 
-                _clear_provider_cooldown()
+                _clear_provider_cooldown("ollama")
                 response = {
                     "answer": answer,
                     "sources": results,
@@ -663,10 +676,12 @@ def answer_with_rag(
                 prompt,
                 timeout=timeout,
             )
+            # A normal empty result is eligible for Groq fallback.
+            gemini_fallback_eligible = True
 
             if answer:
 
-                _clear_provider_cooldown()
+                _clear_provider_cooldown("gemini")
                 response = {
                     "answer": answer,
                     "sources": results,
@@ -694,6 +709,54 @@ def answer_with_rag(
         except Exception as error:
             _record_provider_error(_classify_provider_error(error),
                                    provider="gemini")
+
+    # Gemini is primary; Groq is its independent automatic fallback.
+    if gemini_fallback_eligible:
+        from utils import groq_provider as _groq
+
+        if (_groq.groq_available()
+                and not _provider_cooldown_code("groq")):
+            provider = "groq"
+            try:
+                answer = _groq.generate_answer(
+                    prompt,
+                    timeout=timeout,
+                    max_tokens=max_tokens,
+                )
+                if answer:
+                    _clear_provider_cooldown("groq")
+                    response = {
+                        "answer": answer,
+                        "sources": results,
+                        "used_rag": bool(results),
+                        "used_ai": True,
+                        "provider": "groq",
+                        "answer_kind": "ai_generated",
+                        "error_code": None,
+                        "mode": mode,
+                        "latency_ms": int((time.monotonic() - started) * 1000),
+                        "cached": False,
+                        "suggestions": generate_followup_suggestions(
+                            question, answer, recent_topics,
+                            recent_suggestions=recent_suggestions,
+                            subject_code=subject_code,
+                            semester=semester),
+                    }
+                    if not attachments_text:
+                        cache_put(
+                            cache_key(
+                                question, subject_code, module_number,
+                                mode, kb_version
+                            ),
+                            response,
+                        )
+                    return response
+            except Exception as error:
+                _record_provider_error(
+                    _groq.classify_groq_error(error),
+                    model=_groq.configured_model(),
+                    provider="groq",
+                )
 
     # No AI provider available. Never present raw excerpts as the
     # answer: say so honestly, add a labeled general explanation
@@ -865,8 +928,21 @@ def stream_answer(question, subject_code=None, module_number=None,
     # Bounded fallback strategy (same as answer_with_rag): skip the
     # provider while a fatal state (bad key / exhausted quota) is parked,
     # so repeat questions cannot re-pay the network wait.
+    gemini_cooling_down = (
+        provider == "gemini"
+        and bool(_provider_cooldown_code("gemini"))
+    )
     if provider and _provider_cooldown_code(provider):
         provider = None
+
+    # Groq may take over when Gemini is cooling down, or after a
+    # normal Gemini attempt returns no answer. Do not override the
+    # built-in fallback when Gemini is unavailable or raises outward.
+    gemini_fallback_eligible = bool(
+        gemini_cooling_down
+        and configured_provider() == "gemini"
+        and gemini_available()
+    )
 
     streamed = False
     stream_provider = None
@@ -910,9 +986,36 @@ def stream_answer(question, subject_code=None, module_number=None,
                 stream_provider = "gemini"
                 answer_parts.append(piece)
                 yield {"event": "token", "data": {"text": piece}}
+
+            # A normally completed stream, even an empty one, may use Groq.
+            gemini_fallback_eligible = True
         except Exception as stream_error:
             _record_provider_error(_classify_provider_error(stream_error),
                                    provider="gemini")
+
+    # Never switch providers after Gemini has emitted tokens: that would
+    # mix two answers. Try Groq only when Gemini is eligible for fallback.
+    if not streamed and gemini_fallback_eligible:
+        from utils import groq_provider as _groq
+
+        if (_groq.groq_available()
+                and not _provider_cooldown_code("groq")):
+            try:
+                for piece in _groq.stream_pieces(
+                    prompt, timeout=timeout, max_tokens=max_tokens
+                ):
+                    streamed = True
+                    stream_provider = "groq"
+                    answer_parts.append(piece)
+                    yield {"event": "token", "data": {"text": piece}}
+                if streamed:
+                    _clear_provider_cooldown("groq")
+            except Exception as stream_error:
+                _record_provider_error(
+                    _groq.classify_groq_error(stream_error),
+                    model=_groq.configured_model(),
+                    provider="groq",
+                )
 
     if not streamed:
         # No language model reachable: stream the same honest
