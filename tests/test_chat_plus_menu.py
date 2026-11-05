@@ -21,11 +21,9 @@ import pytest
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
-# Isolate from the local .env BEFORE importing utils.database / app.
+# The temporary database is configured only when the isolated app
+# fixture is created. Never override DATABASE_URL during test collection.
 _TMPDIR = tempfile.mkdtemp(prefix="ssa_plus_menu_")
-os.environ["DATABASE_URL"] = "sqlite:///" + os.path.join(_TMPDIR, "ssa_plus.sqlite")
-for var in ("VERCEL",):
-    os.environ.pop(var, None)
 
 
 # ===============================================================
@@ -220,7 +218,29 @@ class PromptContextTests(unittest.TestCase):
 
 @pytest.fixture(scope="module")
 def ssa_app():
-    import app as app_module   # heavy but self-contained on SQLite
+    # Apply SQLite only while importing the isolated test application.
+    previous_database_url = os.environ.get("DATABASE_URL")
+    previous_vercel = os.environ.get("VERCEL")
+
+    os.environ["DATABASE_URL"] = (
+        "sqlite:///" + os.path.join(_TMPDIR, "ssa_plus.sqlite")
+    )
+    os.environ.pop("VERCEL", None)
+
+    try:
+        import app as app_module
+    finally:
+        # Restore the environment so other tests keep their own DB config.
+        if previous_database_url is None:
+            os.environ.pop("DATABASE_URL", None)
+        else:
+            os.environ["DATABASE_URL"] = previous_database_url
+
+        if previous_vercel is None:
+            os.environ.pop("VERCEL", None)
+        else:
+            os.environ["VERCEL"] = previous_vercel
+
     app_module.app.config["TESTING"] = True
     return app_module
 
