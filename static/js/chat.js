@@ -202,8 +202,12 @@ function initScrollToBottom() {
         return;
     }
     messages._scrollToBottomInit = true;
-    messages.addEventListener("scroll", updateScrollToBottomButton, { passive: true });
-    window.addEventListener("resize", updateScrollToBottomButton);
+    if (typeof messages.addEventListener === "function") {
+        messages.addEventListener("scroll", updateScrollToBottomButton, { passive: true });
+    }
+    if (typeof window.addEventListener === "function") {
+        window.addEventListener("resize", updateScrollToBottomButton);
+    }
     updateScrollToBottomButton();
 }
 
@@ -1510,13 +1514,15 @@ function addSelectedLibraryDocuments() {
 
 
 // Deep link (?q=...) from question lists: populate and answer at once.
-document.addEventListener("DOMContentLoaded", function () {
+function initChatPageEnhancements() {
     setMode(getMode());
     ensureScrollToBottomButton();
     initScrollToBottom();
     const chatInput = document.getElementById("chatInput");
     if (chatInput) {
-        chatInput.addEventListener("input", autoResizeChatInput);
+        if (typeof chatInput.addEventListener === "function") {
+            chatInput.addEventListener("input", autoResizeChatInput);
+        }
         autoResizeChatInput();
     }
     const ctx = getPageContext();
@@ -1525,5 +1531,11 @@ document.addEventListener("DOMContentLoaded", function () {
         input.value = ctx.q;
         sendMessage();
     }
-});
+}
+
+if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", initChatPageEnhancements);
+} else {
+    initChatPageEnhancements();
+}
  
