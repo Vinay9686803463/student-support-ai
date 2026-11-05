@@ -9,3 +9,4 @@ storage/
 
 .env.local
 .env*
+*student-support-ai-history.bundle

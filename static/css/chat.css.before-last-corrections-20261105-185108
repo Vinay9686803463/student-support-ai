@@ -1,0 +1,406 @@
+/* Sources are never shown in the chat UI; citation DOM is dropped in
+   JS (see chat.js). No .source-citations styles on purpose.
+*/
+/*
+.source-citations { ... }  (Intentionally empty.)
+*/
+
+/* Chat input focus: subtle theme-neutral indicator, no blue glow.
+
+   The global accessibility rule later in style.css adds a 2px blue
+   -primary outline to every textarea:focus-visible; that outranks the
+   base `.chat-input-box textarea { outline: none }` rule. These rules
+   win by specificity and redirect focus on THIS field only.
+*/
+
+.chat-input-box:focus-within {
+    border-color: rgba(59, 130, 246, 0.45);
+    box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.15);
+}
+
+.chat-input-box textarea:focus,
+.chat-input-box textarea:focus-visible,
+.chat-input-box textarea:active {
+    outline: none;
+    box-shadow: none;
+}
+
+/* Dynamic "Suggested follow-up questions" section after each AI answer */
+
+.followup-suggestions {
+    margin: 12px 0 16px 48px;
+}
+
+.followup-label {
+    margin: 0 0 8px;
+    color: var(--muted);
+    font-size: 11px;
+}
+
+.followup-suggestions .suggestions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+
+.followup-suggestions .suggestion-chip {
+    padding: 8px 12px;
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 9px;
+    color: var(--text);
+    font-size: 11px;
+    cursor: pointer;
+    transition: 0.2s;
+    text-align: left;
+}
+
+.followup-suggestions .suggestion-chip:hover {
+    border-color: rgba(59, 130, 246, 0.45);
+    color: var(--primary-light);
+    background: rgba(59, 130, 246, 0.10);
+}
+
+/* Mobile: full-width chips for easy tapping */
+@media (max-width: 650px) {
+    .followup-suggestions {
+        margin-left: 0;
+    }
+    .followup-suggestions .suggestion-chip {
+        width: 100%;
+        text-align: left;
+    }
+}
+
+/* ============================================================
+   REFERENCE REDESIGN LAYER — vtudeveloper.in (chat surface)
+   Chat-specific theme, loaded last so it wins the cascade for
+   message bubbles, input, chips and buttons.
+   ============================================================ */
+
+/* Assistant bubble: layered dark card with blue-tinted border. */
+.ai-message .message-content {
+    background:
+        linear-gradient(180deg, rgba(59, 130, 246, 0.06), rgba(255, 255, 255, 0.015) 44%),
+        #08080d;
+    border: 1px solid rgba(255, 255, 255, 0.07);
+    border-radius: 14px;
+}
+
+/* User bubble: the reference blue→cyan button gradient. */
+.user-message .message-content {
+    background: linear-gradient(135deg, #3b82f6, #06b6d4);
+    border-color: transparent;
+    border-radius: 14px;
+    box-shadow: 0 10px 26px rgba(59, 130, 246, 0.35);
+}
+
+/* Assistant name row tone inside bubbles. */
+.ai-message .message-content > strong {
+    color: #93c5fd;
+}
+
+/* Chat content: keep readable aria of the reference body text. */
+.message-content p,
+.message-content li {
+    color: rgba(255, 255, 255, 0.85);
+}
+
+.message-content pre {
+    background: #000000;
+    border-color: rgba(255, 255, 255, 0.08);
+}
+
+.message-content code { color: #93c5fd; }
+
+.message-content th, .message-content td {
+    border-color: rgba(255, 255, 255, 0.08);
+}
+
+.message-content th {
+    background: rgba(59, 130, 246, 0.10);
+    color: #93c5fd;
+}
+
+.message-content blockquote {
+    background: rgba(59, 130, 246, 0.06);
+    border-left-color: var(--primary);
+    color: rgba(255, 255, 255, 0.75);
+}
+
+/* Starter + follow-up suggestion chips. */
+.suggestions button,
+.followup-suggestions .suggestion-chip {
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    color: rgba(255, 255, 255, 0.8);
+    border-radius: 10px;
+}
+
+.suggestions button:hover,
+.followup-suggestions .suggestion-chip:hover {
+    background: rgba(59, 130, 246, 0.10);
+    border-color: rgba(59, 130, 246, 0.45);
+    color: var(--primary-light);
+}
+
+/* Input chrome = reference search pill. */
+.chat-input-box {
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 12px;
+}
+
+.chat-input-box textarea { color: #ffffff; }
+
+.chat-input-box textarea::placeholder {
+    color: rgba(255, 255, 255, 0.3);
+}
+
+.send-button {
+    background: linear-gradient(135deg, #7c3aed 0%, #3b82f6 55%, #06b6d4 100%);
+    border-radius: 50%;
+    box-shadow:
+        0 4px 14px rgba(59, 130, 246, 0.45),
+        0 0 0 4px rgba(255, 255, 255, 0.06);
+}
+
+.send-button:disabled {
+    opacity: 0.55;
+    filter: none;
+    box-shadow: none;
+}
+
+.stop-button {
+    background: #ef4444 !important;
+    border-radius: 50%;
+}
+
+
+/* CHAT UI TEST FIXES - ADDITIVE PATCH */
+
+/* Markdown table horizontal scrolling */
+.table-wrap {
+    width: 100%;
+    max-width: 100%;
+    overflow-x: auto;
+    overflow-y: hidden;
+    -webkit-overflow-scrolling: touch;
+    margin: 12px 0;
+}
+
+.table-wrap table {
+    width: 100%;
+    border-collapse: collapse;
+}
+
+.table-wrap th,
+.table-wrap td {
+    padding: 9px 12px;
+    text-align: left;
+    vertical-align: top;
+}
+
+/* Assistant message typography */
+.ai-message .message-content strong {
+    display: inline;
+    font-weight: 700;
+}
+
+.ai-message .message-content h2 {
+    margin: 20px 0 10px;
+    font-size: 1.25rem;
+    font-weight: 700;
+    line-height: 1.4;
+}
+
+.ai-message .message-content h3 {
+    margin: 17px 0 8px;
+    font-size: 1.1rem;
+    font-weight: 700;
+    line-height: 1.4;
+}
+
+.ai-message .message-content h4,
+.ai-message .message-content h5,
+.ai-message .message-content h6 {
+    margin: 14px 0 7px;
+    font-weight: 700;
+}
+
+.ai-message .message-content ul,
+.ai-message .message-content ol {
+    padding-left: 24px;
+    margin: 10px 0;
+}
+
+.ai-message .message-content li {
+    margin: 5px 0;
+}
+
+.ai-message .message-content pre {
+    max-width: 100%;
+    overflow-x: auto;
+    padding: 12px;
+    border-radius: 8px;
+    white-space: pre;
+}
+
+.ai-message .message-content code {
+    font-family: Consolas, "Courier New", monospace;
+}
+
+.ai-message .message-content .math-inline {
+    display: inline-block;
+    margin: 0 2px;
+    font-family: "Cambria Math", "Times New Roman", serif;
+}
+
+.ai-message .message-content .math-display {
+    display: block;
+    max-width: 100%;
+    overflow-x: auto;
+    margin: 16px 0;
+    padding: 10px;
+    text-align: center;
+    font-family: "Cambria Math", "Times New Roman", serif;
+    font-size: 1.08em;
+}
+
+.ai-message .message-content .math-inline sup,
+.ai-message .message-content .math-inline sub,
+.ai-message .message-content .math-display sup,
+.ai-message .message-content .math-display sub {
+    line-height: 0;
+}
+
+/* Plus menu visibility */
+.plus-menu[hidden] {
+    display: none !important;
+}
+
+/* Plus button base appearance and transitions */
+.plus-button {
+    transition:
+        background-color 0.2s ease,
+        color 0.2s ease,
+        transform 0.2s ease,
+        border-color 0.2s ease;
+}
+
+.plus-button.open {
+    transform: rotate(0deg);
+}
+
+/* Desktop-only hover effects */
+@media (hover: hover) {
+    .plus-button.open:hover {
+        background-color: #ef4444;
+        color: #ffffff;
+    }
+
+    .library-close:hover {
+        background-color: #ef4444;
+        color: #ffffff;
+    }
+}
+
+/* Library modal visibility */
+.library-overlay[hidden] {
+    display: none !important;
+}
+
+/* Library close button keyboard accessibility */
+.library-close {
+    transition:
+        background-color 0.2s ease,
+        color 0.2s ease,
+        transform 0.2s ease;
+}
+
+.library-close:focus-visible {
+    outline: 2px solid #3b82f6;
+    outline-offset: 3px;
+}
+
+/* Library loading, error, retry and empty states */
+.library-loading {
+    padding: 20px;
+    text-align: center;
+    opacity: 0.75;
+}
+
+.library-error {
+    padding: 16px;
+    text-align: center;
+    color: #ef4444;
+}
+
+.library-retry {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    margin: 10px auto;
+    padding: 8px 14px;
+    border: 1px solid currentColor;
+    border-radius: 8px;
+    cursor: pointer;
+    transition:
+        background-color 0.2s ease,
+        color 0.2s ease,
+        border-color 0.2s ease;
+}
+
+.library-empty {
+    padding: 18px;
+    text-align: center;
+    opacity: 0.7;
+}
+
+.library-item {
+    transition: background-color 0.2s ease;
+}
+
+.library-item:focus-visible {
+    outline: 2px solid #3b82f6;
+    outline-offset: 2px;
+}
+
+
+/* CHAT UI FINAL TEST FIXES */
+
+/* Exact display-math selector required by the Markdown renderer */
+.message-content div.math-display {
+    display: block;
+    max-width: 100%;
+    overflow-x: auto;
+    margin: 16px 0;
+    padding: 10px;
+    text-align: center;
+    font-family: "Cambria Math", "Times New Roman", serif;
+}
+
+/* Library close-button transition */
+.library-close {
+    transition: background-color 0.18s ease,
+                color 0.18s ease,
+                transform 0.18s ease;
+}
+
+/* Library loading spinner */
+.library-spinner {
+    width: 28px;
+    height: 28px;
+    margin: 12px auto;
+    border: 3px solid rgba(128, 128, 128, 0.25);
+    border-top-color: currentColor;
+    border-radius: 50%;
+    animation: library-spin 0.8s linear infinite;
+}
+
+@keyframes library-spin {
+    to {
+        transform: rotate(360deg);
+    }
+}
+

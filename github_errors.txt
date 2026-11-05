@@ -1,0 +1,157 @@
+.............................................................sssFFFFFF [ 51%]
+FFFFF................................FFFFF.FFFF.........FFF...FFFF       [100%]
+=================================== FAILURES ===================================
+____________ TestMathPipeline.test_math_symbols_and_renderer_exist _____________
+tests/test_chat_formatting.py:36: in test_math_symbols_and_renderer_exist
+    assert "_MATH_SYMBOLS" in chat_js
+E   assert '_MATH_SYMBOLS' in '/* Student Support AI - chat frontend.\n *\n * Modes: Fast (small retrieval budget, quick answer) and Detailed\n * (l...onst input = document.getElementById("chatInput");\n        input.value = ctx.q;\n        sendMessage();\n    }\n});\n'
+__________________ TestMathPipeline.test_sentinel_based_stash __________________
+tests/test_chat_formatting.py:42: in test_sentinel_based_stash
+    assert "_MATH_SENTINEL" in chat_js
+E   assert '_MATH_SENTINEL' in '/* Student Support AI - chat frontend.\n *\n * Modes: Fast (small retrieval budget, quick answer) and Detailed\n * (l...onst input = document.getElementById("chatInput");\n        input.value = ctx.q;\n        sendMessage();\n    }\n});\n'
+_____________ TestMathPipeline.test_block_level_display_math_stash _____________
+tests/test_chat_formatting.py:50: in test_block_level_display_math_stash
+    assert r"remainder.replace(/\$\$([^$]+)\$\$/g" in chat_js
+E   assert 'remainder.replace(/\\$\\$([^$]+)\\$\\$/g' in '/* Student Support AI - chat frontend.\n *\n * Modes: Fast (small retrieval budget, quick answer) and Detailed\n * (l...onst input = document.getElementById("chatInput");\n        input.value = ctx.q;\n        sendMessage();\n    }\n});\n'
+_____________________ TestMathPipeline.test_currency_guard _____________________
+tests/test_chat_formatting.py:55: in test_currency_guard
+    assert "_looksLikeMath" in chat_js
+E   assert '_looksLikeMath' in '/* Student Support AI - chat frontend.\n *\n * Modes: Fast (small retrieval budget, quick answer) and Detailed\n * (l...onst input = document.getElementById("chatInput");\n        input.value = ctx.q;\n        sendMessage();\n    }\n});\n'
+________________ TestMathPipeline.test_math_delimiters_covered _________________
+tests/test_chat_formatting.py:59: in test_math_delimiters_covered
+    assert r"/\\\(([\s\S]*?)\\\)/g" in chat_js    # \( … \)
+    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E   assert '/\\\\\\(([\\s\\S]*?)\\\\\\)/g' in '/* Student Support AI - chat frontend.\n *\n * Modes: Fast (small retrieval budget, quick answer) and Detailed\n * (l...onst input = document.getElementById("chatInput");\n        input.value = ctx.q;\n        sendMessage();\n    }\n});\n'
+______________ TestMathPipeline.test_render_math_escapes_content _______________
+tests/test_chat_formatting.py:65: in test_render_math_escapes_content
+    assert "function _mathEscape" in chat_js
+E   assert 'function _mathEscape' in '/* Student Support AI - chat frontend.\n *\n * Modes: Fast (small retrieval budget, quick answer) and Detailed\n * (l...onst input = document.getElementById("chatInput");\n        input.value = ctx.q;\n        sendMessage();\n    }\n});\n'
+_____________ TestMathPipeline.test_code_blocks_render_before_math _____________
+tests/test_chat_formatting.py:71: in test_code_blocks_render_before_math
+    chat_js.index('displayStore.push(body)')
+E   ValueError: substring not found
+________________ TestTableWrapper.test_table_wrapped_for_scroll ________________
+tests/test_chat_formatting.py:77: in test_table_wrapped_for_scroll
+    assert 'class="table-wrap"' in chat_js
+E   assert 'class="table-wrap"' in '/* Student Support AI - chat frontend.\n *\n * Modes: Fast (small retrieval budget, quick answer) and Detailed\n * (l...onst input = document.getElementById("chatInput");\n        input.value = ctx.q;\n        sendMessage();\n    }\n});\n'
+__________________ TestTableWrapper.test_wrapper_css_scrolls ___________________
+tests/test_chat_formatting.py:80: in test_wrapper_css_scrolls
+    assert ".table-wrap {" in chat_css
+E   AssertionError: assert '.table-wrap {' in '/* Sources are never shown in the chat UI; citation DOM is dropped in\n   JS (see chat.js). No .source-citations styl...er: none;\n    box-shadow: none;\n}\n\n.stop-button {\n    background: #ef4444 !important;\n    border-radius: 50%;\n}'
+__________ TestTableWrapper.test_typography_layer_scoped_to_assistant __________
+tests/test_chat_formatting.py:88: in test_typography_layer_scoped_to_assistant
+    assert ".ai-message .message-content strong {" in chat_css
+E   AssertionError: assert '.ai-message .message-content strong {' in '/* Sources are never shown in the chat UI; citation DOM is dropped in\n   JS (see chat.js). No .source-citations styl...er: none;\n    box-shadow: none;\n}\n\n.stop-button {\n    background: #ef4444 !important;\n    border-radius: 50%;\n}'
+____________ TestTableWrapper.test_headings_lists_code_math_styled _____________
+tests/test_chat_formatting.py:98: in test_headings_lists_code_math_styled
+    assert marker in chat_css, f"missing style: {marker}"
+E   AssertionError: missing style: .ai-message .message-content h2 {
+E   assert '.ai-message .message-content h2 {' in '/* Sources are never shown in the chat UI; citation DOM is dropped in\n   JS (see chat.js). No .source-citations styl...er: none;\n    box-shadow: none;\n}\n\n.stop-button {\n    background: #ef4444 !important;\n    border-radius: 50%;\n}'
+__________ TestCloseButtonMarkup.test_escape_and_retry_symbols_wired ___________
+tests/test_library_modal.py:198: in test_escape_and_retry_symbols_wired
+    assert "retryLibraryLoad" in chat_js
+E   assert 'retryLibraryLoad' in '/* Student Support AI - chat frontend.\n *\n * Modes: Fast (small retrieval budget, quick answer) and Detailed\n * (l...onst input = document.getElementById("chatInput");\n        input.value = ctx.q;\n        sendMessage();\n    }\n});\n'
+________ TestOverlayHiddenGuard.test_hidden_guard_outranks_flex_display ________
+tests/test_library_modal.py:204: in test_hidden_guard_outranks_flex_display
+    assert ".library-overlay[hidden]" in chat_css
+E   AssertionError: assert '.library-overlay[hidden]' in '/* Sources are never shown in the chat UI; citation DOM is dropped in\n   JS (see chat.js). No .source-citations styl...er: none;\n    box-shadow: none;\n}\n\n.stop-button {\n    background: #ef4444 !important;\n    border-radius: 50%;\n}'
+___________ TestOverlayHiddenGuard.test_red_hover_style_desktop_only ___________
+tests/test_library_modal.py:209: in test_red_hover_style_desktop_only
+    hover_zone = chat_css[chat_css.index("@media (hover: hover)"):]
+                          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E   ValueError: substring not found
+__________ TestOverlayHiddenGuard.test_focus_indicator_and_transition __________
+tests/test_library_modal.py:219: in test_focus_indicator_and_transition
+    assert ".library-close:focus-visible" in chat_css
+E   AssertionError: assert '.library-close:focus-visible' in '/* Sources are never shown in the chat UI; citation DOM is dropped in\n   JS (see chat.js). No .source-citations styl...er: none;\n    box-shadow: none;\n}\n\n.stop-button {\n    background: #ef4444 !important;\n    border-radius: 50%;\n}'
+_________ TestOverlayHiddenGuard.test_loading_and_retry_states_styled __________
+tests/test_library_modal.py:229: in test_loading_and_retry_states_styled
+    assert cls in chat_css, f"missing style hook: {cls}"
+E   AssertionError: missing style hook: .library-loading
+E   assert '.library-loading' in '/* Sources are never shown in the chat UI; citation DOM is dropped in\n   JS (see chat.js). No .source-citations styl...er: none;\n    box-shadow: none;\n}\n\n.stop-button {\n    background: #ef4444 !important;\n    border-radius: 50%;\n}'
+________ TestLibraryJavascriptGuards.test_abortcontroller_and_watchdog _________
+tests/test_library_modal.py:242: in test_abortcontroller_and_watchdog
+    assert "aborter.abort()" in chat_js
+E   assert 'aborter.abort()' in '/* Student Support AI - chat frontend.\n *\n * Modes: Fast (small retrieval budget, quick answer) and Detailed\n * (l...onst input = document.getElementById("chatInput");\n        input.value = ctx.q;\n        sendMessage();\n    }\n});\n'
+___ TestLibraryJavascriptGuards.test_error_state_is_never_reported_as_empty ____
+tests/test_library_modal.py:248: in test_error_state_is_never_reported_as_empty
+    assert "Could not load the library" in chat_js
+E   assert 'Could not load the library' in '/* Student Support AI - chat frontend.\n *\n * Modes: Fast (small retrieval budget, quick answer) and Detailed\n * (l...onst input = document.getElementById("chatInput");\n        input.value = ctx.q;\n        sendMessage();\n    }\n});\n'
+__________ TestLibraryJavascriptGuards.test_closeable_in_every_state ___________
+tests/test_library_modal.py:252: in test_closeable_in_every_state
+    close_body_start = chat_js.index("function closeLibrary()")
+                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E   ValueError: substring not found
+_______ TestLibraryJavascriptGuards.test_single_escape_binding_on_reopen _______
+tests/test_library_modal.py:259: in test_single_escape_binding_on_reopen
+    open_body = chat_js[chat_js.index(
+E   ValueError: substring not found
+________ TestPlusMenuToggleCss.test_hidden_guard_makes_close_effective _________
+tests/test_plus_menu_toggle.py:41: in test_hidden_guard_makes_close_effective
+    assert ".plus-menu[hidden]" in chat_css
+E   AssertionError: assert '.plus-menu[hidden]' in '/* Sources are never shown in the chat UI; citation DOM is dropped in\n   JS (see chat.js). No .source-citations styl...er: none;\n    box-shadow: none;\n}\n\n.stop-button {\n    background: #ef4444 !important;\n    border-radius: 50%;\n}'
+______ TestPlusMenuToggleCss.test_open_state_hover_is_red_with_white_icon ______
+tests/test_plus_menu_toggle.py:46: in test_open_state_hover_is_red_with_white_icon
+    zone = chat_css[chat_css.index("@media (hover: hover)"):]
+                    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E   ValueError: substring not found
+________ TestPlusMenuToggleCss.test_icon_and_colors_transition_smoothly ________
+tests/test_plus_menu_toggle.py:53: in test_icon_and_colors_transition_smoothly
+    start = chat_css.index(".plus-button {")
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E   ValueError: substring not found
+_____ TestPlusMenuToggleJavascript.test_single_state_drives_icon_and_aria ______
+tests/test_plus_menu_toggle.py:86: in test_single_state_drives_icon_and_aria
+    sync_start = chat_js.index("function _syncPlusButton")
+                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E   ValueError: substring not found
+_________ TestPlusMenuToggleJavascript.test_toggle_uses_existing_state _________
+tests/test_plus_menu_toggle.py:98: in test_toggle_uses_existing_state
+    start = chat_js.index("function togglePlusMenu")
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E   ValueError: substring not found
+___ TestPlusMenuToggleJavascript.test_document_listeners_bound_idempotently ____
+tests/test_plus_menu_toggle.py:105: in test_document_listeners_bound_idempotently
+    open_start = chat_js.index("function togglePlusMenu")
+                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E   ValueError: substring not found
+___ TestPlusMenuToggleJavascript.test_outside_click_ignores_menu_and_button ____
+tests/test_plus_menu_toggle.py:121: in test_outside_click_ignores_menu_and_button
+    start = chat_js.index("function _plusOutsideClick")
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E   ValueError: substring not found
+=============================== warnings summary ===============================
+test_chat_answers.py::ApiChatRouteTest::test_honest_fallback_passes_through_not_emptied
+  /home/vinay/Windows File/student-support-ai/venv/lib/python3.14/site-packages/pypdf/_crypt_providers/_cryptography.py:32: CryptographyDeprecationWarning: ARC4 has been moved to cryptography.hazmat.decrepit.ciphers.algorithms.ARC4 and will be removed from cryptography.hazmat.primitives.ciphers.algorithms in 48.0.0.
+    from cryptography.hazmat.primitives.ciphers.algorithms import AES, ARC4
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+=========================== short test summary info ============================
+FAILED tests/test_chat_formatting.py::TestMathPipeline::test_math_symbols_and_renderer_exist
+FAILED tests/test_chat_formatting.py::TestMathPipeline::test_sentinel_based_stash
+FAILED tests/test_chat_formatting.py::TestMathPipeline::test_block_level_display_math_stash
+FAILED tests/test_chat_formatting.py::TestMathPipeline::test_currency_guard
+FAILED tests/test_chat_formatting.py::TestMathPipeline::test_math_delimiters_covered
+FAILED tests/test_chat_formatting.py::TestMathPipeline::test_render_math_escapes_content
+FAILED tests/test_chat_formatting.py::TestMathPipeline::test_code_blocks_render_before_math
+FAILED tests/test_chat_formatting.py::TestTableWrapper::test_table_wrapped_for_scroll
+FAILED tests/test_chat_formatting.py::TestTableWrapper::test_wrapper_css_scrolls
+FAILED tests/test_chat_formatting.py::TestTableWrapper::test_typography_layer_scoped_to_assistant
+FAILED tests/test_chat_formatting.py::TestTableWrapper::test_headings_lists_code_math_styled
+FAILED tests/test_library_modal.py::TestCloseButtonMarkup::test_escape_and_retry_symbols_wired
+FAILED tests/test_library_modal.py::TestOverlayHiddenGuard::test_hidden_guard_outranks_flex_display
+FAILED tests/test_library_modal.py::TestOverlayHiddenGuard::test_red_hover_style_desktop_only
+FAILED tests/test_library_modal.py::TestOverlayHiddenGuard::test_focus_indicator_and_transition
+FAILED tests/test_library_modal.py::TestOverlayHiddenGuard::test_loading_and_retry_states_styled
+FAILED tests/test_library_modal.py::TestLibraryJavascriptGuards::test_abortcontroller_and_watchdog
+FAILED tests/test_library_modal.py::TestLibraryJavascriptGuards::test_error_state_is_never_reported_as_empty
+FAILED tests/test_library_modal.py::TestLibraryJavascriptGuards::test_closeable_in_every_state
+FAILED tests/test_library_modal.py::TestLibraryJavascriptGuards::test_single_escape_binding_on_reopen
+FAILED tests/test_plus_menu_toggle.py::TestPlusMenuToggleCss::test_hidden_guard_makes_close_effective
+FAILED tests/test_plus_menu_toggle.py::TestPlusMenuToggleCss::test_open_state_hover_is_red_with_white_icon
+FAILED tests/test_plus_menu_toggle.py::TestPlusMenuToggleCss::test_icon_and_colors_transition_smoothly
+FAILED tests/test_plus_menu_toggle.py::TestPlusMenuToggleJavascript::test_single_state_drives_icon_and_aria
+FAILED tests/test_plus_menu_toggle.py::TestPlusMenuToggleJavascript::test_toggle_uses_existing_state
+FAILED tests/test_plus_menu_toggle.py::TestPlusMenuToggleJavascript::test_document_listeners_bound_idempotently
+FAILED tests/test_plus_menu_toggle.py::TestPlusMenuToggleJavascript::test_outside_click_ignores_menu_and_button
+27 failed, 106 passed, 3 skipped, 1 warning, 2 subtests passed in 109.25s (0:01:49)

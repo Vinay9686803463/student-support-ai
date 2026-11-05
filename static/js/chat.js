@@ -348,6 +348,81 @@ function _normalizeEmphasisSpacing(text) {
     return out;
 }
 
+
+// Lightweight, safe LaTeX-style math rendering.
+var _MATH_SENTINEL = "\uE001";
+
+var _MATH_SYMBOLS = {
+    "\\rightarrow": "&#8594;",
+    "\\leftarrow": "&#8592;",
+    "\\Rightarrow": "&#8658;",
+    "\\Leftarrow": "&#8656;",
+    "\\times": "&#215;",
+    "\\cdot": "&#183;",
+    "\\div": "&#247;",
+    "\\pm": "&#177;",
+    "\\neq": "&#8800;",
+    "\\leq": "&#8804;",
+    "\\geq": "&#8805;",
+    "\\infty": "&#8734;",
+    "\\pi": "&#960;",
+    "\\alpha": "&#945;",
+    "\\beta": "&#946;",
+    "\\theta": "&#952;",
+    "\\lambda": "&#955;",
+    "\\mu": "&#956;",
+    "\\sigma": "&#963;",
+    "\\Delta": "&#916;",
+    "\\sum": "&#8721;",
+    "\\sqrt": "&#8730;"
+};
+
+function _mathEscape(value) {
+    return String(value || "")
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;")
+        .replace(/'/g, "&#39;");
+}
+
+function _looksLikeMath(body) {
+    var value = String(body || "").trim();
+    if (!value) {
+        return false;
+    }
+    return /\\[A-Za-z]+|[=+*/^_{}<>]|\\b(?:sin|cos|tan|log|ln|lim|sqrt)\\b/i.test(value);
+}
+
+function _renderMathInner(body) {
+    var out = _mathEscape(body);
+
+    // Basic fractions: \\frac{numerator}{denominator}
+    out = out.replace(/\\frac\s*\{([^{}]*)\}\s*\{([^{}]*)\}/g,
+        '<span class="math-frac"><span>$1</span><span>$2</span></span>');
+
+    // Basic square roots.
+    out = out.replace(/\\sqrt\s*\{([^{}]*)\}/g, "&#8730;($1)");
+
+    // Common LaTeX symbols.
+    Object.keys(_MATH_SYMBOLS).forEach(function (command) {
+        var escaped = command.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+        out = out.replace(new RegExp(escaped, "g"), _MATH_SYMBOLS[command]);
+    });
+
+    // Simple superscripts and subscripts.
+    out = out.replace(/\^\{([^{}]+)\}/g, "<sup>$1</sup>");
+    out = out.replace(/_\{([^{}]+)\}/g, "<sub>$1</sub>");
+    out = out.replace(/\^([A-Za-z0-9])/g, "<sup>$1</sup>");
+    out = out.replace(/_([A-Za-z0-9])/g, "<sub>$1</sub>");
+
+    return out;
+}
+
+function _renderMath(body) {
+    return '<span class="math-inline">' + _renderMathInner(body) + "</span>";
+}
+
 function renderInlineText(text) {
     if (!text) {
         return "";
@@ -363,11 +438,23 @@ function renderInlineText(text) {
     text = text.replace(/`[^`\n]+`/g, function (match) {
         return stash("<code>" + match.slice(1, -1) + "</code>");
     });
-    text = text.replace(/\$\$[\s\S]*?\$\$/g, function (match) {
-        return stash(match);
+    text = text.replace(/\\\(([\s\S]*?)\\\)/g, function (match, body) {
+        if (!_looksLikeMath(body)) {
+            return match;
+        }
+        return stash(_MATH_SENTINEL + body + _MATH_SENTINEL);
     });
-    text = text.replace(/\$[^$\n]+\$/g, function (match) {
-        return stash(match);
+    text = text.replace(/\$\$([^$\n]+?)\$\$/g, function (match, body) {
+        if (!_looksLikeMath(body)) {
+            return match;
+        }
+        return stash(_MATH_SENTINEL + body + _MATH_SENTINEL);
+    });
+    text = text.replace(/\$([^$\n]+?)\$/g, function (match, body) {
+        if (!_looksLikeMath(body)) {
+            return match;
+        }
+        return stash(_MATH_SENTINEL + body + _MATH_SENTINEL);
     });
     text = text.replace(/\[([^\]\n]+)\]\((https?:\/\/[^\s)]+)\)/g,
         function (match, label, url) {
@@ -405,7 +492,12 @@ function renderInlineText(text) {
 
     // 4. Restore protected content.
     text = text.replace(/\uE000(\d+)\uE000/g, function (match, index) {
-        return store[parseInt(index, 10)];
+        var value = store[parseInt(index, 10)];
+        if (value && value.charAt(0) === _MATH_SENTINEL &&
+            value.charAt(value.length - 1) === _MATH_SENTINEL) {
+            return _renderMath(value.slice(1, -1));
+        }
+        return value;
     });
 
     // 5. Add spaces between word characters and emphasis tags. This is
@@ -504,6 +596,17 @@ function renderMarkdown(text) {
             return "\uE000F" + (fenceStore.length - 1) + "\uE000";
         });
 
+    // Display math is stashed only after fenced code has been protected.
+    var displayStore = [];
+    remainder = remainder.replace(/\$\$([^$]+)\$\$/g, function (match, body) {
+        displayStore.push(body);
+        return "\n\uE000B" + (displayStore.length - 1) + "\uE000\n";
+    });
+    remainder = remainder.replace(/\\\[([\s\S]*?)\\\]/g, function (match, body) {
+        displayStore.push(body);
+        return "\n\uE000B" + (displayStore.length - 1) + "\uE000\n";
+    });
+
     var decoded = decodeSafeEntities(remainder);
     var normalized = stripInternalCommentary(decoded);
     var lines = escapeHtml(normalized).split("\n");
@@ -549,7 +652,7 @@ function renderMarkdown(text) {
             }).join("") + "</tr>");
         });
         out.push("</table>");
-        html.push(out.join(""));
+        html.push('<div class="table-wrap">' + out.join("") + '</div>');
         tableBuf = [];
     }
     function flushQuote() {
@@ -565,6 +668,18 @@ function renderMarkdown(text) {
 
     for (var i = 0; i < lines.length; i++) {
         var line = lines[i];
+        var displayMatch = line.match(/^\uE000B(\d+)\uE000$/);
+        if (displayMatch) {
+            flushPara();
+            flushList();
+            flushTable();
+            flushQuote();
+            var displayBody = displayStore[parseInt(displayMatch[1], 10)] || "";
+            html.push('<div class="math-display">' +
+                _renderMathInner(displayBody) + "</div>");
+            continue;
+        }
+
         var fenceMatch = line.match(/^\uE000F(\d+)\uE000$/);
         if (fenceMatch) {
             flushPara();
@@ -697,6 +812,17 @@ function stopGeneration() {
 function buildPayload(message) {
     const ctx = getPageContext();
     const payload = { message: message, mode: getMode() };
+
+    // Send Library document IDs only. The server retrieves document text.
+    if (typeof selectedLibraryDocuments !== "undefined") {
+        payload.attachments = Object.values(selectedLibraryDocuments).map(function (doc) {
+            return {
+                type: "library",
+                document_id: doc.id,
+                name: doc.title || doc.filename || "Library document"
+            };
+        });
+    }
     if (ctx.subject_code) {
         payload.subject_code = ctx.subject_code;
     }
@@ -946,6 +1072,318 @@ function clearChat() {
     displayedSuggestions = [];
     document.getElementById("chatInput").focus();
 }
+
+
+// ------------------------------------------------------------
+// PLUS MENU
+// ------------------------------------------------------------
+
+var plusMenuOpen = false;
+
+function _syncPlusButton() {
+    const button = document.getElementById("plusButton");
+    if (!button) return;
+
+    button.classList.toggle("open", plusMenuOpen);
+    button.setAttribute("aria-expanded", plusMenuOpen ? "true" : "false");
+    button.setAttribute("aria-label", plusMenuOpen ? "Close menu" : "Open menu");
+}
+
+function togglePlusMenu(event) {
+    if (event) event.stopPropagation();
+
+    const menu = document.getElementById("plusMenu");
+    if (!menu) return;
+
+    if (plusMenuOpen) {
+        closePlusMenu();
+        return;
+    }
+
+    closePlusMenu();
+
+    menu.hidden = false;
+    plusMenuOpen = true;
+    _syncPlusButton();
+
+    document.removeEventListener("click", _plusOutsideClick);
+    document.removeEventListener("keydown", _plusKeydown);
+
+    document.addEventListener("click", _plusOutsideClick);
+    document.addEventListener("keydown", _plusKeydown);
+}
+
+function closePlusMenu() {
+    const menu = document.getElementById("plusMenu");
+    if (menu) menu.hidden = true;
+
+    plusMenuOpen = false;
+    _syncPlusButton();
+
+    document.removeEventListener("click", _plusOutsideClick);
+    document.removeEventListener("keydown", _plusKeydown);
+}
+
+function _plusOutsideClick(event) {
+    const menu = document.getElementById("plusMenu");
+    const button = document.getElementById("plusButton");
+
+    if (!menu || !button) return;
+
+    if (!menu.contains(event.target) && !button.contains(event.target)) {
+        closePlusMenu();
+    }
+}
+
+function _plusKeydown(event) {
+    if (event.key === "Escape") {
+        closePlusMenu();
+    }
+}
+
+function choosePlusAction(action) {
+    closePlusMenu();
+
+    if (action === "library") {
+        openLibrary();
+        return;
+    }
+
+    if (action === "files") {
+        const fileInput =
+            document.getElementById("fileInput") ||
+            document.getElementById("chatFileInput") ||
+            document.querySelector('input[type="file"]');
+
+        if (fileInput) fileInput.click();
+    }
+}
+
+
+// ------------------------------------------------------------
+// LIBRARY DOCUMENT SELECTION
+// ------------------------------------------------------------
+
+var selectedLibraryDocuments = {};
+var _libraryAborter = null;
+var _libraryWatchdog = null;
+
+function _libraryStopFetch() {
+    if (_libraryWatchdog) {
+        clearTimeout(_libraryWatchdog);
+        _libraryWatchdog = null;
+    }
+
+    if (_libraryAborter) {
+        _libraryAborter.abort();
+        _libraryAborter = null;
+    }
+}
+
+function _libraryEscape(value) {
+    return String(value == null ? "" : value).replace(/[&<>"']/g, function (char) {
+        return {
+            "&": "&amp;",
+            "<": "&lt;",
+            ">": "&gt;",
+            '"': "&quot;",
+            "'": "&#39;"
+        }[char];
+    });
+}
+
+function renderLibrary(documents) {
+    const list = document.getElementById("libraryList");
+    if (!list) return;
+
+    if (!Array.isArray(documents) || documents.length === 0) {
+        list.innerHTML = '<p class="library-empty">No documents found in your library.</p>';
+        return;
+    }
+
+    list.innerHTML = documents.map(function (doc) {
+        const id = Number(doc.id);
+        const selected = Boolean(selectedLibraryDocuments[id]);
+        const title = doc.title || doc.filename || "Untitled document";
+        const subject = doc.subject_code || doc.subject_name || "Library document";
+        const module = doc.module_number ? "Module " + doc.module_number : "";
+
+        return '<button type="button" class="library-document' +
+            (selected ? ' selected' : '') +
+            '" data-library-id="' + id + '" aria-pressed="' + selected + '">' +
+            '<span class="library-document-check">' + (selected ? "✓" : "+") + '</span>' +
+            '<span class="library-document-info">' +
+            '<strong>' + _libraryEscape(title) + '</strong>' +
+            '<small>' + _libraryEscape(subject) +
+            (module ? " · " + _libraryEscape(module) : "") + '</small>' +
+            '</span></button>';
+    }).join("");
+
+    list.querySelectorAll("[data-library-id]").forEach(function (button) {
+        button.addEventListener("click", function () {
+            const id = Number(button.getAttribute("data-library-id"));
+            const doc = documents.find(function (item) {
+                return Number(item.id) === id;
+            });
+
+            if (!doc) return;
+
+            if (selectedLibraryDocuments[id]) {
+                delete selectedLibraryDocuments[id];
+            } else {
+                selectedLibraryDocuments[id] = {
+                    id: id,
+                    title: doc.title || "",
+                    filename: doc.filename || ""
+                };
+            }
+
+            renderLibrary(documents);
+            _updateLibrarySelectionStatus();
+        });
+    });
+
+    _updateLibrarySelectionStatus();
+}
+
+function _updateLibrarySelectionStatus() {
+    const status = document.getElementById("librarySelectionStatus");
+    if (!status) return;
+
+    const count = Object.keys(selectedLibraryDocuments).length;
+    status.textContent = count
+        ? count + " document" + (count === 1 ? "" : "s") + " selected"
+        : "Select documents to use in your chat";
+}
+
+function openLibrary() {
+    const overlay = document.getElementById("libraryOverlay");
+    if (!overlay) return;
+
+    document.removeEventListener("keydown", _libraryKeydown);
+    document.addEventListener("keydown", _libraryKeydown);
+
+    overlay.hidden = false;
+
+    const search = document.getElementById("librarySearch");
+    if (search) {
+        search.value = "";
+        search.focus();
+    }
+
+    startLibraryLoad();
+}
+
+function startLibraryLoad() {
+    const list = document.getElementById("libraryList");
+    if (!list) return;
+
+    _libraryStopFetch();
+
+    _libraryAborter = new AbortController();
+    const aborter = _libraryAborter;
+
+    list.innerHTML = '<p class="library-empty">Loading library…</p>';
+
+    _libraryWatchdog = setTimeout(function () {
+        if (_libraryAborter === aborter) {
+            aborter.abort();
+            _libraryAborter = null;
+            _libraryWatchdog = null;
+            list.innerHTML =
+                '<p class="library-error">Could not load the library. Please try again.</p>' +
+                '<button type="button" onclick="retryLibraryLoad()">Retry</button>';
+        }
+    }, 15000);
+
+    fetch("/api/chat/library", {
+        method: "GET",
+        headers: { "Accept": "application/json" },
+        signal: aborter.signal
+    })
+    .then(function (response) {
+        if (!response.ok) {
+            throw new Error("Could not load the library");
+        }
+        return response.json();
+    })
+    .then(function (data) {
+        if (_libraryAborter !== aborter) return;
+
+        clearTimeout(_libraryWatchdog);
+        _libraryWatchdog = null;
+        _libraryAborter = null;
+
+        if (!data || data.ok !== true || !Array.isArray(data.documents)) {
+            throw new Error("Could not load the library");
+        }
+
+        renderLibrary(data.documents);
+    })
+    .catch(function (error) {
+        if (_libraryAborter !== aborter) return;
+
+        clearTimeout(_libraryWatchdog);
+        _libraryWatchdog = null;
+        _libraryAborter = null;
+
+        if (error && error.name === "AbortError") return;
+
+        list.innerHTML =
+            '<p class="library-error">Could not load the library.</p>' +
+            '<button type="button" onclick="retryLibraryLoad()">Retry</button>';
+    });
+}
+
+function retryLibraryLoad() {
+    startLibraryLoad();
+}
+
+function _libraryKeydown(event) {
+    if (event.key === "Escape") {
+        closeLibrary();
+    }
+}
+
+function closeLibrary() {
+    const overlay = document.getElementById("libraryOverlay");
+    if (overlay) overlay.hidden = true;
+
+    _libraryStopFetch();
+    document.removeEventListener("keydown", _libraryKeydown);
+}
+
+function filterLibrary() {
+    const search = document.getElementById("librarySearch");
+    const list = document.getElementById("libraryList");
+    if (!search || !list) return;
+
+    const query = search.value.trim().toLowerCase();
+
+    list.querySelectorAll("[data-library-id]").forEach(function (button) {
+        button.hidden = !button.textContent.toLowerCase().includes(query);
+    });
+}
+
+function addSelectedLibraryDocuments() {
+    const count = Object.keys(selectedLibraryDocuments).length;
+
+    if (count === 0) {
+        closeLibrary();
+        return;
+    }
+
+    closeLibrary();
+
+    const input = document.getElementById("chatInput");
+    if (input) input.focus();
+}
+
+
+// ------------------------------------------------------------
+// END PLUS MENU AND LIBRARY
+// ------------------------------------------------------------
+
 
 // Deep link (?q=...) from question lists: populate and answer at once.
 document.addEventListener("DOMContentLoaded", function () {

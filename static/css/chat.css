@@ -175,3 +175,253 @@
     background: #ef4444 !important;
     border-radius: 50%;
 }
+
+
+/* CHAT UI TEST FIXES - ADDITIVE PATCH */
+
+/* Markdown table horizontal scrolling */
+.table-wrap {
+    width: 100%;
+    max-width: 100%;
+    overflow-x: auto;
+    overflow-y: hidden;
+    -webkit-overflow-scrolling: touch;
+    margin: 12px 0;
+}
+
+.table-wrap table {
+    width: 100%;
+    border-collapse: collapse;
+}
+
+.table-wrap th,
+.table-wrap td {
+    padding: 9px 12px;
+    text-align: left;
+    vertical-align: top;
+}
+
+/* Assistant message typography */
+.ai-message .message-content strong {
+    display: inline;
+    font-weight: 700;
+}
+
+.ai-message .message-content h2 {
+    margin: 20px 0 10px;
+    font-size: 1.25rem;
+    font-weight: 700;
+    line-height: 1.4;
+}
+
+.ai-message .message-content h3 {
+    margin: 17px 0 8px;
+    font-size: 1.1rem;
+    font-weight: 700;
+    line-height: 1.4;
+}
+
+.ai-message .message-content h4,
+.ai-message .message-content h5,
+.ai-message .message-content h6 {
+    margin: 14px 0 7px;
+    font-weight: 700;
+}
+
+.ai-message .message-content ul,
+.ai-message .message-content ol {
+    padding-left: 24px;
+    margin: 10px 0;
+}
+
+.ai-message .message-content li {
+    margin: 5px 0;
+}
+
+.ai-message .message-content pre {
+    max-width: 100%;
+    overflow-x: auto;
+    padding: 12px;
+    border-radius: 8px;
+    white-space: pre;
+}
+
+.ai-message .message-content code {
+    font-family: Consolas, "Courier New", monospace;
+}
+
+.ai-message .message-content .math-inline {
+    display: inline-block;
+    margin: 0 2px;
+    font-family: "Cambria Math", "Times New Roman", serif;
+}
+
+.ai-message .message-content .math-display {
+    display: block;
+    max-width: 100%;
+    overflow-x: auto;
+    margin: 16px 0;
+    padding: 10px;
+    text-align: center;
+    font-family: "Cambria Math", "Times New Roman", serif;
+    font-size: 1.08em;
+}
+
+.ai-message .message-content .math-inline sup,
+.ai-message .message-content .math-inline sub,
+.ai-message .message-content .math-display sup,
+.ai-message .message-content .math-display sub {
+    line-height: 0;
+}
+
+/* Plus menu visibility */
+.plus-menu[hidden] {
+    display: none !important;
+}
+
+/* Plus button base appearance and transitions */
+.plus-button {
+    transition:
+        background-color 0.2s ease,
+        color 0.2s ease,
+        transform 0.2s ease,
+        border-color 0.2s ease;
+}
+
+.plus-button.open {
+    transform: rotate(0deg);
+}
+
+/* Desktop-only hover effects */
+@media (hover: hover) {
+    .plus-button.open:hover {
+        background-color: #ef4444;
+        color: #ffffff;
+    }
+
+    .library-close:hover {
+        background-color: #ef4444;
+        color: #ffffff;
+    }
+}
+
+/* Library modal visibility */
+.library-overlay[hidden] {
+    display: none !important;
+}
+
+/* Library close button keyboard accessibility */
+.library-close {
+    transition:
+        background-color 0.18s ease,
+        color 0.2s ease,
+        transform 0.2s ease;
+}
+
+.library-close:focus-visible {
+    outline: 2px solid #3b82f6;
+    outline-offset: 3px;
+}
+
+/* Library loading, error, retry and empty states */
+.library-loading {
+    padding: 20px;
+    text-align: center;
+    opacity: 0.75;
+}
+
+.library-error {
+    padding: 16px;
+    text-align: center;
+    color: #ef4444;
+}
+
+.library-retry {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    margin: 10px auto;
+    padding: 8px 14px;
+    border: 1px solid currentColor;
+    border-radius: 8px;
+    cursor: pointer;
+    transition:
+        background-color 0.2s ease,
+        color 0.2s ease,
+        border-color 0.2s ease;
+}
+
+.library-empty {
+    padding: 18px;
+    text-align: center;
+    opacity: 0.7;
+}
+
+.library-item {
+    transition: background-color 0.2s ease;
+}
+
+.library-item:focus-visible {
+    outline: 2px solid #3b82f6;
+    outline-offset: 2px;
+}
+
+
+/* CHAT UI FINAL TEST FIXES */
+
+/* Exact display-math selector required by the Markdown renderer */
+.message-content div.math-display {
+    display: block;
+    max-width: 100%;
+    overflow-x: auto;
+    margin: 16px 0;
+    padding: 10px;
+    text-align: center;
+    font-family: "Cambria Math", "Times New Roman", serif;
+}
+
+/* Library close-button transition */
+.library-close {
+    transition: background-color 0.18s ease,
+                color 0.18s ease,
+                transform 0.18s ease;
+}
+
+/* Library loading spinner */
+.library-spinner {
+    width: 28px;
+    height: 28px;
+    margin: 12px auto;
+    border: 3px solid rgba(128, 128, 128, 0.25);
+    border-top-color: currentColor;
+    border-radius: 50%;
+    animation: library-spin 0.8s linear infinite;
+}
+
+@keyframes library-spin {
+    to {
+        transform: rotate(360deg);
+    }
+}
+
+
+
+/* Library retry button */
+.library-retry-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    margin: 10px auto;
+    padding: 8px 14px;
+    border: 1px solid currentColor;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: background-color 0.2s ease,
+                color 0.2s ease,
+                border-color 0.2s ease;
+}
+
+.library-retry-btn:focus-visible {
+    outline: 2px solid #3b82f6;
+    outline-offset: 3px;
+}
