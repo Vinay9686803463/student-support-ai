@@ -96,6 +96,17 @@ function handleEnter(event) {
     }
 }
 
+function autoResizeChatInput() {
+    const input = document.getElementById("chatInput");
+    if (!input) {
+        return;
+    }
+    input.style.height = "auto";
+    const nextHeight = Math.min(input.scrollHeight || 0, 220);
+    input.style.height = (nextHeight > 0 ? nextHeight : 24) + "px";
+    input.style.overflowY = input.scrollHeight > 220 ? "auto" : "hidden";
+}
+
 function escapeHtml(text) {
     const div = document.createElement("div");
     div.textContent = text;
@@ -104,7 +115,96 @@ function escapeHtml(text) {
 
 function scrollChat() {
     const messages = document.getElementById("chatMessages");
-    messages.scrollTop = messages.scrollHeight;
+    if (!messages) {
+        return;
+    }
+    // Keep the latest message visible only when the user is already
+    // near the bottom; otherwise preserve their reading position and
+    // let the floating "scroll to latest" button handle navigation.
+    const distanceFromBottom =
+        messages.scrollHeight - messages.scrollTop - messages.clientHeight;
+    if (distanceFromBottom <= 150) {
+        messages.scrollTop = messages.scrollHeight;
+    }
+    updateScrollToBottomButton();
+}
+
+function isNearBottom(container, threshold) {
+    if (!container) {
+        return true;
+    }
+    threshold = typeof threshold === "number" ? threshold : 150;
+    return (container.scrollHeight - container.scrollTop - container.clientHeight) <= threshold;
+}
+
+function ensureScrollToBottomButton() {
+    const messages = document.getElementById("chatMessages");
+    const parent = messages && messages.parentElement
+        ? messages.parentElement
+        : messages;
+    if (!parent) {
+        return null;
+    }
+    let btn = document.getElementById("scrollToBottomButton");
+    if (btn) {
+        return btn;
+    }
+    btn = document.createElement("button");
+    btn.type = "button";
+    btn.id = "scrollToBottomButton";
+    btn.className = "scroll-to-bottom";
+    btn.setAttribute("aria-label", "Scroll to latest message");
+    btn.setAttribute("title", "Scroll to latest message");
+    btn.innerHTML = '<span class="scroll-to-bottom-icon" aria-hidden="true">↓</span>';
+    btn.addEventListener("click", scrollToLatestMessage);
+    parent.appendChild(btn);
+    return btn;
+}
+
+function updateScrollToBottomButton() {
+    const messages = document.getElementById("chatMessages");
+    const btn = ensureScrollToBottomButton();
+    if (!messages || !btn) {
+        return;
+    }
+    const distanceFromBottom =
+        messages.scrollHeight - messages.scrollTop - messages.clientHeight;
+    const show = distanceFromBottom > 120;
+    btn.classList.toggle("is-visible", show);
+    btn.classList.toggle("hidden", !show);
+    btn.hidden = !show;
+    btn.style.display = show ? "flex" : "none";
+    btn.setAttribute("aria-hidden", show ? "false" : "true");
+    btn.tabIndex = show ? 0 : -1;
+}
+
+function scrollToBottom() {
+    scrollToLatestMessage();
+}
+
+function scrollToLatestMessage() {
+    const messages = document.getElementById("chatMessages");
+    if (!messages) {
+        return;
+    }
+    if (typeof messages.scrollTo === "function") {
+        messages.scrollTo({ top: messages.scrollHeight, behavior: "smooth" });
+    } else {
+        messages.scrollTop = messages.scrollHeight;
+    }
+    window.setTimeout(updateScrollToBottomButton, 250);
+}
+
+function initScrollToBottom() {
+    const messages = document.getElementById("chatMessages");
+    if (!messages || messages._scrollToBottomInit) {
+        updateScrollToBottomButton();
+        return;
+    }
+    messages._scrollToBottomInit = true;
+    messages.addEventListener("scroll", updateScrollToBottomButton, { passive: true });
+    window.addEventListener("resize", updateScrollToBottomButton);
+    updateScrollToBottomButton();
 }
 
 function addFollowupSuggestions(suggestions) {
@@ -353,28 +453,28 @@ function _normalizeEmphasisSpacing(text) {
 var _MATH_SENTINEL = "\uE001";
 
 var _MATH_SYMBOLS = {
-    "\\rightarrow": "&#8594;",
-    "\\leftarrow": "&#8592;",
-    "\\Rightarrow": "&#8658;",
-    "\\Leftarrow": "&#8656;",
-    "\\times": "&#215;",
-    "\\cdot": "&#183;",
-    "\\div": "&#247;",
-    "\\pm": "&#177;",
-    "\\neq": "&#8800;",
-    "\\leq": "&#8804;",
-    "\\geq": "&#8805;",
-    "\\infty": "&#8734;",
-    "\\pi": "&#960;",
-    "\\alpha": "&#945;",
-    "\\beta": "&#946;",
-    "\\theta": "&#952;",
-    "\\lambda": "&#955;",
-    "\\mu": "&#956;",
-    "\\sigma": "&#963;",
-    "\\Delta": "&#916;",
-    "\\sum": "&#8721;",
-    "\\sqrt": "&#8730;"
+    "\\rightarrow": "→",
+    "\\leftarrow": "←",
+    "\\Rightarrow": "⇒",
+    "\\Leftarrow": "⇐",
+    "\\times": "×",
+    "\\cdot": "·",
+    "\\div": "÷",
+    "\\pm": "±",
+    "\\neq": "≠",
+    "\\leq": "≤",
+    "\\geq": "≥",
+    "\\infty": "∞",
+    "\\pi": "π",
+    "\\alpha": "α",
+    "\\beta": "β",
+    "\\theta": "θ",
+    "\\lambda": "λ",
+    "\\mu": "μ",
+    "\\sigma": "σ",
+    "\\Delta": "Δ",
+    "\\sum": "Σ",
+    "\\sqrt": "√"
 };
 
 function _mathEscape(value) {
@@ -399,7 +499,7 @@ function _renderMathInner(body) {
 
     // Basic fractions: \\frac{numerator}{denominator}
     out = out.replace(/\\frac\s*\{([^{}]*)\}\s*\{([^{}]*)\}/g,
-        '<span class="math-frac"><span>$1</span><span>$2</span></span>');
+        '<span class="math-frac"><span class="math-frac-top">$1</span><span>$2</span></span>');
 
     // Basic square roots.
     out = out.replace(/\\sqrt\s*\{([^{}]*)\}/g, "&#8730;($1)");
@@ -884,6 +984,7 @@ async function sendMessage() {
     conversationHistory.push({ role: "user", content: message });
     input.value = "";
     input.focus();
+    autoResizeChatInput();
 
     const thinking = addThinking();
     const contentP = thinking.querySelector(".message-content p");
@@ -953,6 +1054,7 @@ async function sendMessage() {
                     }
                     fullText += data.text;
                     renderStreamed();
+                    scrollChat();
                 } else if (eventName === "sources" && data.sources) {
                     sources = data.sources;
                 } else if (eventName === "done") {
@@ -1071,6 +1173,7 @@ function clearChat() {
     recentTopics = [];
     displayedSuggestions = [];
     document.getElementById("chatInput").focus();
+    updateScrollToBottomButton();
 }
 
 
@@ -1167,6 +1270,7 @@ function choosePlusAction(action) {
 var selectedLibraryDocuments = {};
 var _libraryAborter = null;
 var _libraryWatchdog = null;
+var _libraryCache = null;
 
 function _libraryStopFetch() {
     if (_libraryWatchdog) {
@@ -1197,7 +1301,7 @@ function renderLibrary(documents) {
     if (!list) return;
 
     if (!Array.isArray(documents) || documents.length === 0) {
-        list.innerHTML = '<p class="library-empty">No documents found in your library.</p>';
+        list.innerHTML = '<p class="library-empty">No study documents found in your library.</p>';
         return;
     }
 
@@ -1215,7 +1319,9 @@ function renderLibrary(documents) {
             '<span class="library-document-info">' +
             '<strong>' + _libraryEscape(title) + '</strong>' +
             '<small>' + _libraryEscape(subject) +
-            (module ? " · " + _libraryEscape(module) : "") + '</small>' +
+            (module ? " · " + _libraryEscape(module) : "") +
+            (doc.filename ? " · " + _libraryEscape(doc.filename) : "") +
+            '</small>' +
             '</span></button>';
     }).join("");
 
@@ -1256,6 +1362,16 @@ function _updateLibrarySelectionStatus() {
         : "Select documents to use in your chat";
 }
 
+function prefetchLibrary() {
+    if (_libraryAborter) {
+        return;
+    }
+    const list = document.getElementById("libraryList");
+    if (list) {
+        startLibraryLoad();
+    }
+}
+
 function openLibrary() {
     const overlay = document.getElementById("libraryOverlay");
     if (!overlay) return;
@@ -1271,14 +1387,21 @@ function openLibrary() {
         search.focus();
     }
 
-    startLibraryLoad();
+    if (_libraryCache) {
+        renderLibrary(_libraryCache);
+    } else {
+        startLibraryLoad();
+    }
 }
 
 function startLibraryLoad() {
     const list = document.getElementById("libraryList");
     if (!list) return;
 
-    _libraryStopFetch();
+    // Reuse an in-flight request instead of aborting and refetching.
+    if (_libraryAborter) {
+        return;
+    }
 
     _libraryAborter = new AbortController();
     const aborter = _libraryAborter;
@@ -1292,7 +1415,7 @@ function startLibraryLoad() {
             _libraryWatchdog = null;
             list.innerHTML =
                 '<p class="library-error">Could not load the library. Please try again.</p>' +
-                '<button type="button" onclick="retryLibraryLoad()">Retry</button>';
+                '<button type="button" onclick="retryLibraryLoad()">Try again</button>';
         }
     }, 15000);
 
@@ -1318,6 +1441,7 @@ function startLibraryLoad() {
             throw new Error("Could not load the library");
         }
 
+        _libraryCache = data.documents;
         renderLibrary(data.documents);
     })
     .catch(function (error) {
@@ -1331,7 +1455,7 @@ function startLibraryLoad() {
 
         list.innerHTML =
             '<p class="library-error">Could not load the library.</p>' +
-            '<button type="button" onclick="retryLibraryLoad()">Retry</button>';
+            '<button type="button" onclick="retryLibraryLoad()">Try again</button>';
     });
 }
 
@@ -1388,6 +1512,13 @@ function addSelectedLibraryDocuments() {
 // Deep link (?q=...) from question lists: populate and answer at once.
 document.addEventListener("DOMContentLoaded", function () {
     setMode(getMode());
+    ensureScrollToBottomButton();
+    initScrollToBottom();
+    const chatInput = document.getElementById("chatInput");
+    if (chatInput) {
+        chatInput.addEventListener("input", autoResizeChatInput);
+        autoResizeChatInput();
+    }
     const ctx = getPageContext();
     if (ctx.q) {
         const input = document.getElementById("chatInput");
