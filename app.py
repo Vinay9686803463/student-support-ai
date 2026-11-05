@@ -1,4 +1,5 @@
 import os
+import base64
 import re
 import threading
 from functools import wraps
@@ -855,6 +856,63 @@ def chat():
 # CHAT API (offline study assistant, no API key needed)
 # =========================================================
 
+
+def _gemini_vision_answer(message, images):
+    """Analyse image attachments with Gemini's vision capability."""
+    try:
+        from utils.ai import _gemini_key
+    except Exception:
+        return None
+    key = _gemini_key()
+    if not key:
+        return None
+    try:
+        import google.generativeai as genai
+    except Exception:
+        return None
+    try:
+        genai.configure(api_key=key)
+    except Exception:
+        return None
+
+    parts = [message or "Describe and explain this image."]
+    for img in images or []:
+        data = (img.get("data") or "").strip()
+        if "," in data:
+            data = data.split(",", 1)[1]
+        if not data:
+            continue
+        parts.append({
+            "inline_data": {
+                "mime_type": img.get("mime") or "image/jpeg",
+                "data": data,
+            }
+        })
+
+    try:
+        from utils.rag_ai import _model_candidates
+        candidates = _model_candidates()
+    except Exception:
+        candidates = []
+
+    if not candidates:
+        candidates = ["gemini-1.5-flash"]
+
+    for model_name in candidates:
+        try:
+            model = genai.GenerativeModel(model_name)
+            response = model.generate_content(
+                parts, request_options={"timeout": 60}
+            )
+            text = (getattr(response, "text", "") or "").strip()
+            if text:
+                return text
+        except Exception as error:
+            print("GEMINI VISION ERROR:", error)
+            continue
+    return None
+
+
 @app.route("/api/chat", methods=["POST"])
 @login_required
 def api_chat():
@@ -925,6 +983,35 @@ def api_chat():
         attachment_error, attachments_text = _resolve_chat_attachments(data)
         if attachment_error:
             return {"reply": attachment_error}, 400
+
+        image_error, images = _resolve_chat_images(data)
+        if image_error:
+            return {"reply": image_error}, 400
+
+        if images:
+            answer = _gemini_vision_answer(message, images)
+            if not answer:
+                return {
+                    "reply": (
+                        "Image analysis requires a configured Gemini "
+                        "vision-capable model. Please configure "
+                        "GOOGLE_GENERATIVE_AI_API_KEY."
+                    )
+                }, 415
+            return {
+                "reply": answer,
+                "answer": answer,
+                "sources": [],
+                "used_rag": False,
+                "used_ai": True,
+                "engine": "gemini",
+                "provider": "gemini",
+                "answer_kind": "ai_generated",
+                "error_code": None,
+                "mode": mode,
+                "latency_ms": 0,
+                "cached": False,
+            }
 
         rag_result = answer_with_rag(
             question=message,
@@ -1232,6 +1319,60 @@ def _library_document_text(document_id):
     return merged
 
 
+
+
+def _resolve_chat_images(data):
+    """Validate image attachments and return (error, images).
+
+    images is a list of {name, mime, data} dicts with base64 payloads.
+    """
+    raw = data.get("attachments")
+    if not isinstance(raw, list):
+        return None, []
+
+    images = []
+    for item in raw[:_CHAT_ATTACHMENT_MAX_COUNT]:
+        if not isinstance(item, dict):
+            continue
+        kind = (item.get("type") or "").strip().lower()
+        name = _sanitize_attachment_name(item.get("name"))
+        mime = (item.get("mime") or item.get("content_type") or "").strip().lower()
+        data_url = item.get("data") or item.get("base64") or ""
+
+        is_image = (
+            kind == "image"
+            or mime.startswith("image/")
+            or Path(name).suffix.lower() in _CHAT_IMAGE_EXTENSIONS
+        )
+        if not is_image:
+            continue
+        if not data_url:
+            return "Image attachment is missing its data.", []
+        if "," in str(data_url):
+            data_url = str(data_url).split(",", 1)[1]
+        try:
+            raw_bytes = base64.b64decode(data_url, validate=True)
+        except Exception:
+            return "Invalid image data.", []
+        if not raw_bytes or len(raw_bytes) > _CHAT_ATTACHMENT_MAX_BYTES:
+            return "Image is too large (max 10 MB).", []
+        if not mime or mime not in {"image/jpeg", "image/png", "image/webp", "image/gif"}:
+            suffix = Path(name).suffix.lower()
+            mime = {
+                ".jpg": "image/jpeg", ".jpeg": "image/jpeg",
+                ".png": "image/png", ".webp": "image/webp",
+                ".gif": "image/gif",
+            }.get(suffix, "image/jpeg")
+        images.append({
+            "name": name,
+            "mime": mime,
+            "data": base64.b64encode(raw_bytes).decode("ascii"),
+        })
+        if len(images) >= _CHAT_ATTACHMENT_MAX_COUNT:
+            break
+
+    return None, images
+
 @app.route("/api/chat/attachments", methods=["POST"])
 @login_required
 def api_chat_attachments():
@@ -1445,6 +1586,35 @@ def api_chat_stream():
                     + _json.dumps(_attachment_error)
                     + "}\n\n"
                 )
+                return
+            _image_error, images = _resolve_chat_images(data)
+            if _image_error:
+                yield (
+                    'event: error\ndata: {"error": '
+                    + _json.dumps(_image_error)
+                    + "}\n\n"
+                )
+                return
+            if images:
+                answer = _gemini_vision_answer(message, images)
+                if not answer:
+                    yield (
+                        'event: error\ndata: {"error": '
+                        + _json.dumps(
+                            "Image analysis requires a configured Gemini "
+                            "vision-capable model."
+                        )
+                        + "}\n\n"
+                    )
+                    return
+                yield "event: token\ndata: " + _json.dumps({"text": answer}) + "\n\n"
+                yield "event: done\ndata: " + _json.dumps({
+                    "used_ai": True,
+                    "provider": "gemini",
+                    "mode": mode,
+                    "latency_ms": 0,
+                    "suggestions": [],
+                }) + "\n\n"
                 return
             for item in stream_answer(
                 question=message,

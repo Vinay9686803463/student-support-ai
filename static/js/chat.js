@@ -12,6 +12,10 @@ var conversationHistory = [];
 var recentTopics = [];
 var displayedSuggestions = [];
 var latestSuggestionSeq = 0;
+var pendingAttachments = [];
+var _attachmentSeq = 0;
+var autoFollowScroll = true;
+var _scrollRaf = null;
 var FALLBACK_SUGGESTIONS = [
     "Explain agile vs waterfall models",
     "Give important Computer Networks exam questions",
@@ -118,12 +122,7 @@ function scrollChat() {
     if (!messages) {
         return;
     }
-    // Keep the latest message visible only when the user is already
-    // near the bottom; otherwise preserve their reading position and
-    // let the floating "scroll to latest" button handle navigation.
-    const distanceFromBottom =
-        messages.scrollHeight - messages.scrollTop - messages.clientHeight;
-    if (distanceFromBottom <= 150) {
+    if (autoFollowScroll) {
         messages.scrollTop = messages.scrollHeight;
     }
     updateScrollToBottomButton();
@@ -187,12 +186,16 @@ function scrollToLatestMessage() {
     if (!messages) {
         return;
     }
+    autoFollowScroll = true;
     if (typeof messages.scrollTo === "function") {
         messages.scrollTo({ top: messages.scrollHeight, behavior: "smooth" });
     } else {
         messages.scrollTop = messages.scrollHeight;
     }
-    window.setTimeout(updateScrollToBottomButton, 250);
+    window.setTimeout(function () {
+        autoFollowScroll = true;
+        updateScrollToBottomButton();
+    }, 250);
 }
 
 function initScrollToBottom() {
@@ -203,7 +206,10 @@ function initScrollToBottom() {
     }
     messages._scrollToBottomInit = true;
     if (typeof messages.addEventListener === "function") {
-        messages.addEventListener("scroll", updateScrollToBottomButton, { passive: true });
+        messages.addEventListener("scroll", function () {
+            autoFollowScroll = isNearBottom(messages, 120);
+            updateScrollToBottomButton();
+        }, { passive: true });
     }
     if (typeof window.addEventListener === "function") {
         window.addEventListener("resize", updateScrollToBottomButton);
@@ -917,15 +923,37 @@ function buildPayload(message) {
     const ctx = getPageContext();
     const payload = { message: message, mode: getMode() };
 
-    // Send Library document IDs only. The server retrieves document text.
+    // Send Library document IDs plus any staged file/image attachments.
+    var attachments = [];
     if (typeof selectedLibraryDocuments !== "undefined") {
-        payload.attachments = Object.values(selectedLibraryDocuments).map(function (doc) {
+        attachments = attachments.concat(Object.values(selectedLibraryDocuments).map(function (doc) {
             return {
                 type: "library",
                 document_id: doc.id,
                 name: doc.title || doc.filename || "Library document"
             };
-        });
+        }));
+    }
+    if (pendingAttachments.length > 0) {
+        attachments = attachments.concat(pendingAttachments.map(function (att) {
+            if (att.type && att.type.indexOf("image/") === 0) {
+                return {
+                    type: "image",
+                    name: att.name,
+                    size: att.size,
+                    mime: att.type,
+                    data: att.data
+                };
+            }
+            return {
+                type: "file",
+                name: att.name,
+                size: att.size
+            };
+        }));
+    }
+    if (attachments.length > 0) {
+        payload.attachments = attachments;
     }
     if (ctx.subject_code) {
         payload.subject_code = ctx.subject_code;
@@ -989,6 +1017,8 @@ async function sendMessage() {
     input.value = "";
     input.focus();
     autoResizeChatInput();
+    pendingAttachments = [];
+    renderChipTray();
 
     const thinking = addThinking();
     const contentP = thinking.querySelector(".message-content p");
@@ -1264,6 +1294,103 @@ function choosePlusAction(action) {
 
         if (fileInput) fileInput.click();
     }
+}
+
+function _attachmentId() {
+    return "att" + (++_attachmentSeq);
+}
+
+function handleFilesChosen(input) {
+    const files = (input && input.files) ? Array.from(input.files) : [];
+    if (!files.length) {
+        return;
+    }
+    files.forEach(function (file) {
+        if (!file || !file.type) {
+            return;
+        }
+        if (file.size > 10 * 1024 * 1024) {
+            alert("Image too large (max 10 MB): " + file.name);
+            return;
+        }
+        const reader = new FileReader();
+        reader.onload = function (event) {
+            const dataUrl = (event && event.target && event.target.result) || "";
+            pendingAttachments.push({
+                id: _attachmentId(),
+                kind: "file",
+                name: file.name,
+                size: file.size,
+                type: file.type,
+                data: dataUrl
+            });
+            renderChipTray();
+        };
+        if (file.type.indexOf("image/") === 0) {
+            reader.readAsDataURL(file);
+        } else {
+            // Non-image attachments are not text-extracted on the client;
+            // keep them as metadata only.
+            pendingAttachments.push({
+                id: _attachmentId(),
+                kind: "file",
+                name: file.name,
+                size: file.size,
+                type: file.type,
+                data: ""
+            });
+            renderChipTray();
+        }
+    });
+    if (input) {
+        input.value = "";
+    }
+}
+
+function renderChipTray() {
+    const tray = document.getElementById("chipTray");
+    if (!tray) {
+        return;
+    }
+    if (!pendingAttachments.length) {
+        tray.hidden = true;
+        tray.innerHTML = "";
+        return;
+    }
+    tray.hidden = false;
+    tray.innerHTML = "";
+    pendingAttachments.forEach(function (att) {
+        const chip = document.createElement("div");
+        chip.className = "attachment-chip";
+        if (att.type && att.type.indexOf("image/") === 0 && att.data) {
+            const img = document.createElement("img");
+            img.src = att.data;
+            img.alt = att.name;
+            img.className = "attachment-thumb";
+            chip.appendChild(img);
+        }
+        const label = document.createElement("span");
+        label.className = "attachment-name";
+        label.textContent = att.name;
+        chip.appendChild(label);
+        const remove = document.createElement("button");
+        remove.type = "button";
+        remove.className = "attachment-remove";
+        remove.textContent = "×";
+        remove.setAttribute("aria-label", "Remove " + att.name);
+        remove.onclick = function () {
+            removeAttachment(att.id);
+        };
+        chip.appendChild(remove);
+        tray.appendChild(chip);
+    });
+}
+
+function removeAttachment(id) {
+    pendingAttachments = pendingAttachments.filter(function (att) {
+        return att.id !== id;
+    });
+    renderChipTray();
 }
 
 

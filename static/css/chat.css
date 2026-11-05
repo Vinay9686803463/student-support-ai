@@ -508,3 +508,116 @@
     outline: none;
     box-shadow: none;
 }
+
+/* Attachment chips */
+.chip-tray {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    padding: 0 4px 8px;
+}
+
+.attachment-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 8px;
+    border-radius: 12px;
+    background: rgba(255, 255, 255, 0.06);
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    color: rgba(255, 255, 255, 0.85);
+    font-size: 12px;
+}
+
+.attachment-thumb {
+    width: 32px;
+    height: 32px;
+    object-fit: cover;
+    border-radius: 8px;
+}
+
+.attachment-remove {
+    border: 0;
+    background: transparent;
+    color: rgba(255, 255, 255, 0.7);
+    cursor: pointer;
+    font-size: 14px;
+    line-height: 1;
+}
+
+/* Plus menu base + popup positioning */
+.plus-menu {
+    position: absolute;
+    bottom: calc(100% + 8px);
+    left: 0;
+    min-width: 285px;
+    max-width: calc(100vw - 24px);
+    padding: 6px;
+    background: #0a0a12;
+    border: 1px solid rgba(59, 130, 246, 0.25);
+    border-radius: 14px;
+    box-shadow:
+        0 18px 42px rgba(0, 0, 0, 0.55),
+        0 0 0 1px rgba(255, 255, 255, 0.03) inset;
+    display: none;
+    flex-direction: column;
+    gap: 2px;
+    z-index: 90;
+}
+
+.plus-menu:not([hidden]) {
+    display: flex;
+}
+
+.plus-menu[hidden] {
+    display: none !important;
+}
+
+.plus-menu-item {
+    display: flex;
+    align-items: center;
+    gap: 11px;
+    width: 100%;
+    padding: 9px 10px;
+    border: 0;
+    border-radius: 10px;
+    background: transparent;
+    color: rgba(255, 255, 255, 0.85);
+    font-size: 13px;
+    text-align: left;
+    cursor: pointer;
+    transition: background 0.15s;
+}
+
+.plus-menu-item:hover,
+.plus-menu-item:focus {
+    background: rgba(59, 130, 246, 0.12);
+    color: #ffffff;
+    outline: none;
+}
+
+.plus-menu-icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 30px;
+    height: 30px;
+    flex: 0 0 30px;
+    border-radius: 9px;
+    font-size: 15px;
+    background: linear-gradient(135deg, rgba(124, 58, 237, 0.25), rgba(59, 130, 246, 0.25));
+    border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.plus-menu-text {
+    display: flex;
+    flex-direction: column;
+    gap: 1px;
+}
+
+.plus-menu-text small {
+    display: block;
+    color: rgba(255, 255, 255, 0.45);
+    font-size: 11px;
+    line-height: 1.35;
+}
