@@ -1,4 +1,4 @@
-# 📚 Student Support AI
+ # 📚 Student Support AI
 
 <p align="center">
   <strong>An AI-powered academic learning and study assistant for VTU Computer Science students</strong>
